@@ -1,0 +1,4 @@
+cmd in admin mode
+path_to_openssl.exe req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout privateKey.key -out certificate.crt
+
+file will be created in the dir that the cmd is open in
