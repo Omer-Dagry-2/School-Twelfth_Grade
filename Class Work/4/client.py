@@ -1,4 +1,5 @@
 import socket
+# import base64
 
 
 sock = socket.socket()
@@ -11,6 +12,22 @@ answer = ""
 while answer != expected:
     answer += sock.recv(1).decode()
 
+# l = ['aw==', 'bg==', 'dA==', 'aA==', 'bg==', 'Zw==', 'bw==', 'dw==', 'bg==', 'dA==', 'aQ==', 'bg==']
+# l_dict = {}
+# for key in l:
+#     l_dict[key] = ""
+#
+# for key in l_dict:
+#     for value in range(0, 1114111):
+#         try:
+#             if base64.b64encode(chr(value).encode()).decode().strip('\n') == key:
+#                 l_dict[key] = chr(value)
+#                 break
+#         except UnicodeError:
+#             pass
+#
+# for key in l:
+#     print(l_dict[key], end="")
 password = "knthngowntin"
 sock.send(password.encode())
 
