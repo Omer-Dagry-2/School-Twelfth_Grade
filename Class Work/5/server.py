@@ -143,13 +143,13 @@ def main():
                 distribute_work_and_wait_for_result(client_socket)
         lock.acquire()
         if md5_hash_result is not None:
-            lock.release()
             print("\n\n" + "-" * 64)
             print("Found Result:", md5_hash_result)
             print("-" * 64 + "\n")
             end_time = datetime.datetime.now()
             print(end_time)
             print("Time Passed:", end_time - start_time)
+            lock.release()
             # wait until all the threads send their client to stop work
             while threading.active_count() > 1:
                 pass
