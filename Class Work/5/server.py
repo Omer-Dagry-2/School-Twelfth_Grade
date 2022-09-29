@@ -11,7 +11,7 @@ PORT = 8820
 START = "0000000000"
 END = "9999999999"
 TOTAL = int(END) - int(START)
-MAX_CLIENTS = 8  # 27
+MAX_CLIENTS = 27
 
 # Globals
 lock = threading.RLock()
@@ -20,13 +20,13 @@ clients_working_range = {}
 ranges = []
 md5_hash_result = None
 s = int(START)
-for i in range(MAX_CLIENTS):
-    if i == MAX_CLIENTS - 1:
+for j in range(MAX_CLIENTS):
+    if j == MAX_CLIENTS - 1:
         ranges.append((str(s).rjust(10, "0"), str(END).rjust(10, "0"), "free"))
     else:
         ranges.append((str(s).rjust(10, "0"), str(s + TOTAL // MAX_CLIENTS).rjust(10, "0"), "free"))
         s += TOTAL // MAX_CLIENTS
-del s, i
+del s, j
 
 
 def start_server() -> socket.socket:
