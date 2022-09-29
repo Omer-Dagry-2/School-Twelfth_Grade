@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import socket
 import multiprocessing
@@ -13,13 +14,21 @@ CPU_COUNT = multiprocessing.cpu_count()
 LEN_OF_MD5_HASHED_DATA = 10
 
 
+def recv_full(client_socket: socket.socket, msg_len: int) -> str:
+    """ Recv x bytes From The Server """
+    data = ""
+    while len(data) != msg_len:
+        data += client_socket.recv(msg_len - len(data)).decode()
+    return data
+
+
 def recv_range_and_hash_from_server(sock: socket.socket) -> tuple[int, int, str]:
     """ Receives The Range And MD5 hash From The Server """
     # get my range
-    my_range = sock.recv(20).decode()  # start_from (10 digits) & end_at (10 digits)
+    my_range = recv_full(sock, 20)  # start_from (10 digits) & end_at (10 digits)
     start_from = int(my_range[:10])
     end_at = int(my_range[10:])
-    md5_hash = sock.recv(32).decode().lower()  # the md5 hash (32 digit)
+    md5_hash = recv_full(sock, 32).lower()  # the md5 hash (32 digit)
     return start_from, end_at, md5_hash
 
 
@@ -122,7 +131,12 @@ def main():
     decrypted_md5_hash = None
     sock.settimeout(2)
     res = b""
+    at_least_one_process_finished = False
+    last_check_in = datetime.datetime.now()
     while processes and decrypted_md5_hash is None:
+        if (datetime.datetime.now() - last_check_in).seconds >= 60:
+            sock.send("working...".encode())
+            last_check_in = datetime.datetime.now()
         for p in processes:
             # check if server sent to stop
             try:
@@ -135,6 +149,7 @@ def main():
                 exit()
             # check if there is a process that finished
             if not p.is_alive() and decrypted_md5_hash is None:
+                at_least_one_process_finished = True
                 try:
                     # check if the process sent the result or sent not found msg
                     decrypted_md5_hash = multiprocessing_queue.get(timeout=5)
@@ -153,15 +168,17 @@ def main():
     # sent result to server if found
     # else tell server that the range doesn't contain the result and
     # close connection to server and start again (a new range will be given)
-    if decrypted_md5_hash is not None:
+    if decrypted_md5_hash is not None and at_least_one_process_finished:
         sock.send(decrypted_md5_hash.encode())
         sock.close()
         print("MD5 Hash Result Sent To Server.")
         exit()
-    else:
+    elif at_least_one_process_finished:
         sock.send("not found.".encode())
         sock.close()
         main()
+    else:
+        sock.close()
 
 
 if __name__ == '__main__':

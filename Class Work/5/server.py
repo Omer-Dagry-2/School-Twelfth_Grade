@@ -14,6 +14,7 @@ TOTAL = int(END) - int(START)
 MAX_CLIENTS = 27
 
 # Globals
+dont_print = False
 lock = threading.RLock()
 clients_sockets = []
 clients_working_range = {}
@@ -29,10 +30,16 @@ for j in range(MAX_CLIENTS):
 del s, j
 
 
+def print_(*args, sep=' ', end='\n', file=None):
+    global dont_print
+    if not dont_print:
+        print(*args, sep=sep, end=end, file=file)
+
+
 def start_server() -> socket.socket:
     server_socket = socket.socket()
     server_socket.bind((IP, PORT))
-    print("Server Is Up!!")
+    print_("Server Is Up!!")
     server_socket.listen()
     return server_socket
 
@@ -46,7 +53,7 @@ def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
     except socket.error:
         lock.release()
         return None
-    print("New Connection From: '%s:%s'" % (client_addr[0], client_addr[1]))
+    print_("New Connection From: '%s:%s'" % (client_addr[0], client_addr[1]))
     clients_sockets.append(client_socket)
     lock.release()
     return client_socket
@@ -60,6 +67,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
     global clients_sockets, clients_working_range, ranges, lock, md5_hash_result
     answer = None
     client_socket.settimeout(2)
+    last_check_in = datetime.datetime.now()
     while answer is None:
         lock.acquire()
         if md5_hash_result is not None:
@@ -67,40 +75,56 @@ def wait_for_result_from_client(client_socket: socket.socket):
                 client_socket.send("stop".encode())
             except ConnectionResetError:
                 pass
-            print("Sent Client stop, md5 hash result found.")
+            print_("Sent Client stop, md5 hash result found.")
             answer = "not found."
+            lock.release()
             break
         lock.release()
         try:
             try:
                 answer = client_socket.recv(10).decode()
-                if answer in ["", "not found."] or len(answer) == 10:
+                if answer == "working...":
+                    last_check_in = datetime.datetime.now()
+                    answer = None
+                elif answer in ["", "not found."] or len(answer) == 10:
                     break
             except socket.error:
                 answer = None
         except ConnectionResetError:
             answer = ""
             break
-    lock.acquire()
+        if (datetime.datetime.now() - last_check_in).seconds >= 120:
+            print_("Client Didn't Check In For 120 Seconds, Closing Connection.")
+            try:
+                client_socket.send("stop".encode())
+            except ConnectionResetError:
+                pass
+            answer = ""
+            break
     if answer == "not found.":
-        print("Client Sent not found.")
+        lock.acquire()
+        print_("Client Sent not found.")
         range_ = clients_working_range[client_socket]
         if range_ in ranges:
             ranges.remove(range_)
-            print("Removed Range:", range_[:-1], "No Result Found In The Range.")
+            print_("Removed Range:", range_[:-1], "No Result Found In The Range.")
+        lock.release()
     elif answer == "":
-        print("Client Disappeared.")
+        lock.acquire()
+        print_("Client Disappeared.")
         range_ = clients_working_range[client_socket]
         if range_ in ranges:
             ranges[ranges.index(range_)] = (range_[0], range_[1], "free")
-            print("The Range", range_[:-1], "Is Available Again.")
+            print_("The Range", range_[:-1], "Is Available Again.")
         try:
             client_socket.close()
         except socket.error:
             pass
+        lock.release()
     elif answer != "" and answer != "not found.":
+        lock.acquire()
         md5_hash_result = answer
-    lock.release()
+        lock.release()
 
 
 def distribute_work_and_wait_for_result(client_socket: socket.socket):
@@ -119,22 +143,26 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
             client_socket.send(MD5_HASH.encode())
             ranges[i] = (possible_range[0], possible_range[1], "taken")
             clients_working_range[client_socket] = (possible_range[0], possible_range[1], "taken")
-            print("Gave Client Work, Range:", possible_range[0], "-", possible_range[1])
+            print_("Gave Client Work, Range:", possible_range[0], "-", possible_range[1])
             break
     lock.release()
     if not found:
         client_socket.close()
-        print("Didn't Found Work For Client. Connection Closed")
+        lock.acquire()
+        print_("Didn't Found Work For Client. Connection Closed")
+        lock.release()
     else:
+        lock.acquire()
         t = threading.Thread(target=wait_for_result_from_client, args=(client_socket,), daemon=True)
         t.start()
-        print("Started A Thread To Wait For The Client's Result.")
+        print_("Started A Thread To Wait For The Client's Result.")
+        lock.release()
 
 
 def main():
-    global lock, md5_hash_result
+    global lock, md5_hash_result, dont_print
     start_time = datetime.datetime.now()
-    print("Start Time:", start_time)
+    print_("Start Time:", start_time)
     server_socket = start_server()
     while ranges:
         if True in [True if p_r[-1] == "free" else False for p_r in ranges]:
@@ -143,12 +171,13 @@ def main():
                 distribute_work_and_wait_for_result(client_socket)
         lock.acquire()
         if md5_hash_result is not None:
-            print("\n\n" + "-" * 64)
-            print("Found Result:", md5_hash_result)
-            print("-" * 64 + "\n")
+            print_("\n\n" + "-" * 64)
+            print_("Found Result:", md5_hash_result)
+            print_("-" * 64 + "\n")
             end_time = datetime.datetime.now()
-            print(end_time)
-            print("Time Passed:", end_time - start_time)
+            print_(end_time)
+            print_("Time Passed:", end_time - start_time)
+            dont_print = True
             lock.release()
             # wait until all the threads send their client to stop work
             while threading.active_count() > 1:
