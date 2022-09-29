@@ -11,11 +11,11 @@ PORT = 8820
 PACKET_LEN = 32
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
-LEN_OF_MD5_HASHED_DATA = 10
+LEN_OF_MD5_HASHED_DATA: int = 10
 
 
 def recv_full(client_socket: socket.socket, msg_len: int) -> str:
-    """ Recv x bytes From The Server """
+    """ Loop On recv Until Received msg_len bytes From The Server """
     data = ""
     while len(data) != msg_len:
         data += client_socket.recv(msg_len - len(data)).decode()
@@ -70,7 +70,7 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int, multiprocess
         return None
 
 
-def close_all_processes(processes):
+def close_all_processes(processes: list):
     """ Kills All The Processes That Were Created """
     for p_ in processes:
         if p_ is not multiprocessing.current_process():
@@ -95,13 +95,16 @@ def main():
     # if not start_from < 3735928559 < end_at:
     #     sock.send("not found.".encode())
     #     main()
-    total = end_at - start_from
-    processes = []
+    total: int = end_at - start_from
+    processes: list[multiprocessing.Process] = []
     # communication with processes
     multiprocessing_queue = multiprocessing.Queue()
     # open processes (the number of processes is the number of cores)
     # each process gets a portion of the range that the server has sent
     for i in range(CPU_COUNT):
+        # if it is the last process the range will be up to end_at
+        # if the range isn't dividable by the cpu_count we will miss some options
+        # so this fixes that problem
         if i == CPU_COUNT - 1:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(md5_hash.lower(), LEN_OF_MD5_HASHED_DATA, multiprocessing_queue,
@@ -113,6 +116,7 @@ def main():
             print("Process %d Range:" % (i + 1),
                   str(start_from).rjust(10, "0"), "-",
                   str(int(end_at)).rjust(10, "0"))
+        # each process gets the same amount of options to go through
         else:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(md5_hash.lower(), LEN_OF_MD5_HASHED_DATA, multiprocessing_queue,
@@ -125,20 +129,21 @@ def main():
                   str(start_from).rjust(10, "0"), "-",
                   str(start_from + (total // CPU_COUNT)).rjust(10, "0"))
             start_from += (total // CPU_COUNT)
-    # wait for processes to return the md5 message
-    # or until all processes finish
-    decrypted_md5_hash: Union[None, str]
-    decrypted_md5_hash = None
+    # wait for processes to finish
+    # or until one of them will send the md5 message through the multiprocessing queue
+    decrypted_md5_hash: Union[None, str] = None
     sock.settimeout(2)
     res = b""
-    at_least_one_process_finished = False
+    at_least_one_process_finished: bool = False
     last_check_in = datetime.datetime.now()
     while processes and decrypted_md5_hash is None:
+        # send the server check up around every 1 minute
         if (datetime.datetime.now() - last_check_in).seconds >= 60:
             sock.send("working...".encode())
             last_check_in = datetime.datetime.now()
+        # loop on all active processes
         for p in processes:
-            # check if server sent to stop
+            # check if server sent stop msg
             try:
                 res = sock.recv(4)
             except socket.error:

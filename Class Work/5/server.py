@@ -11,15 +11,15 @@ PORT = 8820
 START = "0000000000"
 END = "9999999999"
 TOTAL = int(END) - int(START)
-MAX_CLIENTS = 27
+MAX_CLIENTS: int = 27
 
 # Globals
-dont_print = False
+dont_print: bool = False
 lock = threading.RLock()
 clients_sockets = []
 clients_working_range = {}
-ranges = []
-md5_hash_result = None
+ranges: list[tuple[str, str, str]] = []
+md5_hash_result: Union[str, None] = None
 s = int(START)
 for j in range(MAX_CLIENTS):
     if j == MAX_CLIENTS - 1:
@@ -45,6 +45,7 @@ def start_server() -> socket.socket:
 
 
 def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
+    """ Try To Accept New Client And Add To Clients List """
     global clients_sockets
     lock.acquire()
     server_socket.settimeout(2)
@@ -64,7 +65,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
     Waits For Client To Finish Work And If Another
     Client Has Finished It Will Tell The Others To Stop Work
     """
-    global clients_sockets, clients_working_range, ranges, lock, md5_hash_result
+    global clients_working_range, ranges, lock, md5_hash_result
     answer = None
     client_socket.settimeout(2)
     last_check_in = datetime.datetime.now()
@@ -136,7 +137,7 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
     lock.acquire()
     found = False
     for i in range(0, len(ranges)):
-        possible_range = ranges[i]
+        possible_range: tuple[str, str, str] = ranges[i]
         if possible_range[-1] == "free":
             found = True
             client_socket.send(possible_range[0].encode() + possible_range[1].encode())
