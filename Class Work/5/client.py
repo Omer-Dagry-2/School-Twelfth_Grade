@@ -25,7 +25,7 @@ def recv_full(client_socket: socket.socket, msg_len: int) -> str:
     while len(data) != msg_len and res != "":
         try:
             res = client_socket.recv(msg_len - len(data)).decode()
-        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
+        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
             raise ServerHasNoWork
         data += res
     client_socket.settimeout(None)
