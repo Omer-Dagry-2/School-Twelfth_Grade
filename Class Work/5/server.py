@@ -51,7 +51,7 @@ def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
     server_socket.settimeout(2)
     try:
         client_socket, client_addr = server_socket.accept()
-    except socket.error:
+    except (socket.error, ConnectionRefusedError):
         lock.release()
         return None
     print_("New Connection From: '%s:%s'" % (client_addr[0], client_addr[1]))
@@ -74,7 +74,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
         if md5_hash_result is not None:
             try:
                 client_socket.send("stop".encode())
-            except ConnectionResetError:
+            except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 pass
             print_("Sent Client stop, md5 hash result found.")
             answer = "not found."
@@ -91,20 +91,20 @@ def wait_for_result_from_client(client_socket: socket.socket):
                     break
             except socket.error:
                 answer = None
-        except ConnectionResetError:
+        except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             answer = ""
             break
         if (datetime.datetime.now() - last_check_in).seconds >= 120:
-            print_("Client Didn't Check In For 120 Seconds, Closing Connection.")
+            print_("'%s:%s' Didn't Check In For 120 Seconds, Closing Connection." % client_socket.getpeername())
             try:
                 client_socket.send("stop".encode())
-            except ConnectionResetError:
+            except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 pass
             answer = ""
             break
     if answer == "not found.":
         lock.acquire()
-        print_("Client Sent not found.")
+        print_("'%s:%s' Sent not found." % client_socket.getpeername())
         range_ = clients_working_range[client_socket]
         if range_ in ranges:
             ranges.remove(range_)
@@ -112,7 +112,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
         lock.release()
     elif answer == "":
         lock.acquire()
-        print_("Client Disappeared.")
+        print_("'%s:%s' Disappeared." % client_socket.getpeername())
         range_ = clients_working_range[client_socket]
         if range_ in ranges:
             ranges[ranges.index(range_)] = (range_[0], range_[1], "free")
@@ -140,23 +140,33 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
         possible_range: tuple[str, str, str] = ranges[i]
         if possible_range[-1] == "free":
             found = True
-            client_socket.send(possible_range[0].encode() + possible_range[1].encode())
-            client_socket.send(MD5_HASH.encode())
+            try:
+                client_socket.send(possible_range[0].encode() + possible_range[1].encode())
+                client_socket.send(MD5_HASH.encode())
+            except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
+                break
             ranges[i] = (possible_range[0], possible_range[1], "taken")
             clients_working_range[client_socket] = (possible_range[0], possible_range[1], "taken")
-            print_("Gave Client Work, Range:", possible_range[0], "-", possible_range[1])
+            print_("Gave '%s:%s' Work, Range:" % client_socket.getpeername(),
+                   possible_range[0], "-", possible_range[1])
             break
     lock.release()
     if not found:
-        client_socket.close()
+        try:
+            client_socket.send("no work")
+            client_socket.close()
+        except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
+            pass
         lock.acquire()
-        print_("Didn't Found Work For Client. Connection Closed")
+        print_("Didn't Found Work For '%s:%s' * OR * "
+               "Socket Error When Trying To Send Work. Connection Closed" % client_socket.getpeername())
         lock.release()
     else:
         lock.acquire()
         t = threading.Thread(target=wait_for_result_from_client, args=(client_socket,), daemon=True)
         t.start()
-        print_("Started A Thread To Wait For The Client's Result.")
+        print_("Started A Thread To Wait For '%s:%s' Result."
+               % client_socket.getpeername())
         lock.release()
 
 
@@ -190,4 +200,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
