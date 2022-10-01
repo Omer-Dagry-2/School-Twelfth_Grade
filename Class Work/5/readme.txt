@@ -3,8 +3,9 @@ Ver 1. the one in the same folder as this readme.txt
 Ver 2. the one in the folder 'With multiprocessing lock - Slower' which is in the same folder as this readme.txt
 
 
-the difference is that Ver 2 uses a multiprocessing lock to update a 
-global var that contains the number of options that have been checked (in the client side)
+the difference is only in the client side.
+Ver 2 uses a multiprocessing lock to update a global var that 
+contains the number of options that have been checked (in the client side)
 and Ver 1 uses a local server that each process cummunicates with and only the local server updates
 the var that contains the number of options that have been checked (in the client side)
 
