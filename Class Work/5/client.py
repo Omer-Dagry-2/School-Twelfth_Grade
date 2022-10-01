@@ -219,8 +219,8 @@ def main():
         print("Starting Again.")
         try:
             main()
-        except (ConnectionError, ServerHasNoWork):
-            if isinstance(e, ServerHasNoWork):
+        except (ConnectionError, ServerHasNoWork) as err:
+            if isinstance(err, ServerHasNoWork):
                 print("Server Has No Work.")
     else:
         sock.close()
