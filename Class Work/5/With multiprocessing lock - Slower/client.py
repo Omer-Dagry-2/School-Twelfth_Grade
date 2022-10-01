@@ -6,11 +6,15 @@ import queue
 from typing import *
 
 
+# Constants
 IP = "127.0.0.1"
 PORT = 8820
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
 LEN_OF_MD5_HASHED_DATA: int = 10
+
+# Globals
+multiprocessing_lock = multiprocessing.Lock()
 
 
 class ServerHasNoWork(Exception):
@@ -43,7 +47,8 @@ def recv_range_and_hash_from_server(sock: socket.socket) -> tuple[int, int, str]
     return start_from, end_at, md5_hash
 
 
-def brute_force_decrypt_md5(md5_hash: str, base_string_length: int, multiprocessing_queue: queue.Queue,
+def brute_force_decrypt_md5(md5_hash: str, base_string_length: int,
+                            multiprocessing_queue: queue.Queue, number_of_checked_options: multiprocessing.Value,
                             start_from: str, end_at: str, current_string: str = "") -> Union[str, None]:
     """
     The Brute Force Function
@@ -55,7 +60,7 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int, multiprocess
     # catching KeyboardInterrupt in these processes, so another try except is added here
     # so if the user closes the program it will exit without a bunch of errors
     try:
-        global NUMBERS
+        global NUMBERS, multiprocessing_lock
         # start from
         numbers = NUMBERS[NUMBERS.index(start_from[0]):]
         for number in numbers:
@@ -64,6 +69,7 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int, multiprocess
                 if numbers.index(number) != 0:
                     start_from = "0" * base_string_length
                 res = brute_force_decrypt_md5(md5_hash, base_string_length - 1, multiprocessing_queue,
+                                              number_of_checked_options,
                                               start_from[1:], end_at, current_string=current_string + number)
                 if res is not None and "stop" in res and base_string_length != 10:
                     return res
@@ -76,6 +82,9 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int, multiprocess
                     multiprocessing_queue.put(res)
                     break
             else:
+                multiprocessing_lock.acquire()
+                number_of_checked_options.value += 1
+                multiprocessing_lock.release()
                 current_string_ = current_string + number
                 if hashlib.md5(current_string_.encode()).hexdigest().lower() == md5_hash.lower():
                     return current_string_
@@ -96,6 +105,7 @@ def close_all_processes(processes: list[multiprocessing.Process]):
 
 
 def main():
+    global multiprocessing_lock
     print("Trying To Connect To The Server...")
     # open socket to server
     sock = socket.socket()
@@ -118,6 +128,7 @@ def main():
     processes: list[multiprocessing.Process] = []
     # communication with processes
     multiprocessing_queue = multiprocessing.Queue()
+    number_of_checked_options = multiprocessing.Value("i", 0)
     # open processes (the number of processes is the number of cores)
     # each process gets a portion of the range that the server has sent
     for i in range(CPU_COUNT):
@@ -127,6 +138,7 @@ def main():
         if i == CPU_COUNT - 1:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(md5_hash.lower(), LEN_OF_MD5_HASHED_DATA, multiprocessing_queue,
+                                              number_of_checked_options,
                                               str(start_from).rjust(10, "0"),
                                               str(int(end_at)).rjust(10, "0")),
                                         daemon=True)
@@ -139,8 +151,9 @@ def main():
         else:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(md5_hash.lower(), LEN_OF_MD5_HASHED_DATA, multiprocessing_queue,
+                                              number_of_checked_options,
                                               str(start_from).rjust(10, "0"),
-                                              str(start_from + (total // CPU_COUNT)).rjust(10, "0")),
+                                              str(start_from + (total // CPU_COUNT) - 1).rjust(10, "0")),
                                         daemon=True)
             p.start()
             processes.append(p)
@@ -156,15 +169,21 @@ def main():
     at_least_one_process_finished: bool = False
     last_check_in = datetime.datetime.now()
     while processes and decrypted_md5_hash is None:
-        # send the server check up around every 1 minute
-        if (datetime.datetime.now() - last_check_in).seconds >= 60:
+        # send the server the amount of options that were checked since the last time we sent
+        if (datetime.datetime.now() - last_check_in).seconds >= 5:
             try:
-                sock.send("working...".encode())
+                multiprocessing_lock.acquire()
+                msg = ("checked '%d' more" % number_of_checked_options.value).rjust(32, " ").encode()
+                sent_amount = sock.send(msg)
+                while sent_amount != 32:
+                    sent_amount += sock.send(msg[sent_amount:])
+                number_of_checked_options.value = 0
+                multiprocessing_lock.release()
+                last_check_in = datetime.datetime.now()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 print("Lost Connection To Server. Exiting.")
                 close_all_processes(processes)
                 exit()
-            last_check_in = datetime.datetime.now()
         # loop on all active processes
         for p in processes:
             # check if server sent stop msg
@@ -202,7 +221,10 @@ def main():
     # close connection to server and start again (a new range will be given)
     if decrypted_md5_hash is not None and at_least_one_process_finished:
         try:
-            sock.send(decrypted_md5_hash.encode())
+            msg = decrypted_md5_hash.rjust(32, " ").encode()
+            sent_amount = sock.send(msg)
+            while sent_amount != 32:
+                sent_amount += sock.send(msg[sent_amount:])
             sock.close()
             print("MD5 Hash Result Sent To Server.")
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
@@ -211,11 +233,15 @@ def main():
     elif at_least_one_process_finished:
         print("Didn't Found Result In Range.")
         try:
-            sock.send("not found.".encode())
+            msg = "not found.".rjust(32, " ").encode()
+            sent_amount = sock.send(msg)
+            while sent_amount != 32:
+                sent_amount += sock.send(msg[sent_amount:])
             sock.close()
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
             print("Couldn't Send not found To Server. Connection Error")
             exit()
+        print("-" * 64)
         print("Starting Again.")
         try:
             main()

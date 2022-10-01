@@ -1,6 +1,9 @@
 import datetime
 import socket
 import threading
+import time
+import tkinter
+from tkinter import ttk
 from typing import *
 
 
@@ -11,11 +14,12 @@ PORT = 8820
 START = "0000000000"
 END = "9999999999"
 TOTAL = int(END) - int(START)
-MAX_CLIENTS: int = 27
+MAX_CLIENTS: int = 100
 
 # Globals
+number_of_checked_options = 0
 dont_print: bool = False
-lock = threading.RLock()
+lock = threading.Lock()
 clients_sockets = []
 clients_working_range = {}
 ranges: list[tuple[str, str, str]] = []
@@ -60,12 +64,45 @@ def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
     return client_socket
 
 
+def update_status_gui(checked_options_label: tkinter.Label, checked_options_progress_bar: ttk.Progressbar):
+    """ Update The Status GUI """
+    global lock, number_of_checked_options
+    while True:
+        lock.acquire()
+        checked_options_label.config(text="So Far %d Options Were Checked (%f"
+                                          % (number_of_checked_options,
+                                             (number_of_checked_options * 100) / 10000000000) + "%)")
+        checked_options_progress_bar["value"] = (number_of_checked_options * 100) / 10000000000
+        lock.release()
+
+
+def display_number_of_checked_options():
+    """ Initialize The Status GUI And Open A Thread To Update The GUI """
+    global lock, number_of_checked_options
+    main_window = tkinter.Tk()
+    main_window.title("Status")
+    lock.acquire()
+    checked_options_label = tkinter.Label(main_window,
+                                          text="So Far %d Options Were Checked." % number_of_checked_options,
+                                          font=("helvetica", 16))
+    checked_options_progress_bar = ttk.Progressbar(main_window, orient=tkinter.HORIZONTAL,
+                                                   length=300, mode="determinate")
+    lock.release()
+    checked_options_label.pack(pady=10)
+    checked_options_progress_bar.pack(pady=20)
+    update_status_gui_thread = threading.Thread(target=update_status_gui,
+                                                args=(checked_options_label, checked_options_progress_bar),
+                                                daemon=True)
+    update_status_gui_thread.start()
+    main_window.mainloop()
+
+
 def wait_for_result_from_client(client_socket: socket.socket):
     """
     Waits For Client To Finish Work And If Another
     Client Has Finished It Will Tell The Others To Stop Work
     """
-    global clients_working_range, ranges, lock, md5_hash_result
+    global clients_working_range, ranges, lock, md5_hash_result, number_of_checked_options
     answer = None
     client_socket.settimeout(2)
     last_check_in = datetime.datetime.now()
@@ -83,11 +120,24 @@ def wait_for_result_from_client(client_socket: socket.socket):
         lock.release()
         try:
             try:
-                answer = client_socket.recv(10).decode()
-                if answer == "working...":
+                answer = client_socket.recv(32).decode()
+                count = 0
+                while len(answer) != 32 and count != 10:
+                    answer += client_socket.recv(32 - len(answer)).decode()
+                    count += 1
+                    time.sleep(1)
+                if len(answer) != 32:
+                    answer = ""
+                    break
+                elif "checked" in answer and "more" in answer:
                     last_check_in = datetime.datetime.now()
+                    checked_x_more_options = int(answer.split("hecked '")[1].split("' mo")[0])
+                    print(checked_x_more_options)
+                    lock.acquire()
+                    number_of_checked_options += checked_x_more_options
+                    lock.release()
                     answer = None
-                elif answer in ["", "not found."] or len(answer) == 10:
+                elif answer in ["", "not found.".rjust(32, " ")] or len(answer) == 32:
                     break
             except socket.error:
                 answer = None
@@ -95,14 +145,16 @@ def wait_for_result_from_client(client_socket: socket.socket):
             answer = ""
             break
         if (datetime.datetime.now() - last_check_in).seconds >= 120:
+            lock.acquire()
             print_("'%s:%s' Didn't Check In For 120 Seconds, Closing Connection." % client_socket.getpeername())
+            lock.release()
             try:
                 client_socket.send("stop".encode())
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 pass
             answer = ""
             break
-    if answer == "not found.":
+    if answer == "not found.".rjust(32, " "):
         lock.acquire()
         print_("'%s:%s' Sent not found." % client_socket.getpeername())
         range_ = clients_working_range[client_socket]
@@ -122,7 +174,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
         except socket.error:
             pass
         lock.release()
-    elif answer != "" and answer != "not found.":
+    elif answer != "" and answer != "not found.".rjust(32, " "):
         lock.acquire()
         md5_hash_result = answer
         lock.release()
@@ -175,6 +227,8 @@ def main():
     start_time = datetime.datetime.now()
     print_("Start Time:", start_time)
     server_socket = start_server()
+    gui_thread = threading.Thread(target=display_number_of_checked_options, daemon=True)
+    gui_thread.start()
     while ranges:
         if True in [True if p_r[-1] == "free" else False for p_r in ranges]:
             client_socket = accept_client(server_socket)
@@ -190,8 +244,9 @@ def main():
             print_("Time Passed:", end_time - start_time)
             dont_print = True
             lock.release()
-            # wait until all the threads send their client to stop work
-            while threading.active_count() > 1:
+            # wait until all the threads send their client to stop work and close themselves
+            # 3 threads will remain. main thread, status gui thread, status gui update thread
+            while threading.active_count() > 3:
                 pass
         try:
             lock.release()
@@ -203,4 +258,4 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        pass
+        print("\nReceived KeyboardInterrupt")

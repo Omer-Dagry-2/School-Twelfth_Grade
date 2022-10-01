@@ -242,6 +242,12 @@ def main():
     # and this main thread finish sending to the server the count
     while (processes and decrypted_md5_hash is None) or \
             local_server_thread.is_alive() or number_of_checked_options != 0:
+        # let the local server recv all the '1' and update the counter
+        # if this loop will continue nonstop it will interfere with the server
+        # because of the lock, it will take a lot of time for the server to
+        # recv all the '1' and update the var because it does it one by one and there is a lock each time
+        if not (processes and decrypted_md5_hash is None):
+            time.sleep(2)
         # send the server the amount of options that were checked since the last time we sent
         if (datetime.datetime.now() - last_check_in).seconds >= 5:
             try:
@@ -252,12 +258,11 @@ def main():
                     sent_amount += sock.send(msg[sent_amount:])
                 number_of_checked_options = 0
                 threading_lock.release()
-                pass
+                last_check_in = datetime.datetime.now()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 print("Lost Connection To Server. Exiting.")
                 close_all_processes(processes)
                 exit()
-            last_check_in = datetime.datetime.now()
         # loop on all active processes
         for p in processes:
             # check if server sent stop msg
@@ -315,6 +320,7 @@ def main():
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
             print("Couldn't Send not found To Server. Connection Error")
             exit()
+        print("-" * 64)
         print("Starting Again.")
         try:
             main()

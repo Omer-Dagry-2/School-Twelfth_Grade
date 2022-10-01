@@ -3,6 +3,7 @@ import socket
 import threading
 import time
 import tkinter
+from tkinter import ttk
 from typing import *
 
 
@@ -63,12 +64,15 @@ def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
     return client_socket
 
 
-def update_status_gui(checked_options_label: tkinter.Label):
+def update_status_gui(checked_options_label: tkinter.Label, checked_options_progress_bar: ttk.Progressbar):
     """ Update The Status GUI """
     global lock, number_of_checked_options
     while True:
         lock.acquire()
-        checked_options_label.config(text="So Far %d Options Were Checked." % number_of_checked_options)
+        checked_options_label.config(text="So Far %d Options Were Checked (%f"
+                                          % (number_of_checked_options,
+                                             (number_of_checked_options * 100) / 10000000000) + "%)")
+        checked_options_progress_bar["value"] = (number_of_checked_options * 100) / 10000000000
         lock.release()
 
 
@@ -81,9 +85,14 @@ def display_number_of_checked_options():
     checked_options_label = tkinter.Label(main_window,
                                           text="So Far %d Options Were Checked." % number_of_checked_options,
                                           font=("helvetica", 16))
+    checked_options_progress_bar = ttk.Progressbar(main_window, orient=tkinter.HORIZONTAL,
+                                                   length=300, mode="determinate")
     lock.release()
-    checked_options_label.pack()
-    update_status_gui_thread = threading.Thread(target=update_status_gui, args=(checked_options_label,), daemon=True)
+    checked_options_label.pack(pady=10)
+    checked_options_progress_bar.pack(pady=20)
+    update_status_gui_thread = threading.Thread(target=update_status_gui,
+                                                args=(checked_options_label, checked_options_progress_bar),
+                                                daemon=True)
     update_status_gui_thread.start()
     main_window.mainloop()
 
