@@ -70,6 +70,9 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
         lock.acquire()
         num = number_of_checked_options
         lock.release()
+        # if this thread and main thread are active, it means the GUI thread is closed
+        if threading.active_count() == 2:
+            break
         try:
             if md5_hash_result is not None:  # if result found
                 value = 100  # 100%
@@ -220,7 +223,7 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
     lock.release()
     if not found:
         try:
-            client_socket.send("no work")
+            client_socket.send("no work".encode())
             client_socket.close()
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             pass

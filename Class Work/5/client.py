@@ -11,8 +11,8 @@ from typing import *
 # Constants
 LOCAL_SERVER_IP = "0.0.0.0"
 LOCAL_SERVER_PORT = 8821
-IP = "127.0.0.1"
-# IP = "10.100.102.10"
+# IP = "127.0.0.1"
+IP = "10.100.102.10"
 PORT = 8820
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
@@ -39,6 +39,9 @@ def recv_full(sock: socket.socket, msg_len: int) -> str:
                 break
         if res is not None:
             data += res
+        elif res == "no work":
+            print("Server Has No Work")
+            exit()
         count += 1
         time.sleep(1)
     sock.settimeout(None)
@@ -188,6 +191,9 @@ def main():
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
     # ------------------ just for testing, skip until result in range ------------------
+    # time.sleep(5)
+    # sock.send("3735928559".rjust(32, " ").encode())
+    # exit()
     # if not start_from < 3735928559 < end_at:
     #     msg = "not found.".rjust(32, " ").encode()
     #     sent_amount = sock.send(msg)
