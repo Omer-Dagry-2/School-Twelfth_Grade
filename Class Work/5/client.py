@@ -177,13 +177,13 @@ def main():
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
     # ------------------ just for testing, skip until result in range ------------------
-    if not start_from < 3735928559 < end_at:
-        msg = "not found.".rjust(32, " ").encode()
-        sent_amount = sock.send(msg)
-        while sent_amount != 32:
-            sent_amount += sock.send(msg[sent_amount:])
-        sock.close()
-        main()
+    # if not start_from < 3735928559 < end_at:
+    #     msg = "not found.".rjust(32, " ").encode()
+    #     sent_amount = sock.send(msg)
+    #     while sent_amount != 32:
+    #         sent_amount += sock.send(msg[sent_amount:])
+    #     sock.close()
+    #     main()
     # ----------------------------------------------------------------------------------
     total: int = end_at - start_from
     processes: list[multiprocessing.Process] = []
@@ -342,7 +342,10 @@ def main():
             exit()
         print("-" * 64)
         print("Starting Again.")
-        main()
+        try:
+            main()
+        except ConnectionError as err:
+            print(str(err))
     else:
         sock.close()
 

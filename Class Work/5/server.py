@@ -14,7 +14,7 @@ PORT = 8820
 START = "0000000000"
 END = "9999999999"
 TOTAL = int(END) - int(START)
-MAX_CLIENTS: int = 300
+MAX_CLIENTS: int = 27
 
 # Globals
 number_of_checked_options = 0

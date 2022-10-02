@@ -18,10 +18,6 @@ LEN_OF_MD5_HASHED_DATA: int = 10
 multiprocessing_lock = multiprocessing.Lock()
 
 
-class ServerHasNoWork(Exception):
-    """ Raised When The Server Has No Work To Give """
-
-
 def recv_full(sock: socket.socket, msg_len: int) -> str:
     """ Loop On recv Until Received msg_len bytes From The Server """
     sock.settimeout(5)
@@ -259,9 +255,8 @@ def main():
         print("Starting Again.")
         try:
             main()
-        except (ConnectionError, ServerHasNoWork) as err:
-            if isinstance(err, ServerHasNoWork):
-                print("Server Has No Work.")
+        except ConnectionError as err:
+            print(str(err))
     else:
         sock.close()
 
@@ -269,6 +264,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ConnectionError, ServerHasNoWork, KeyboardInterrupt) as e:
-        if isinstance(e, ServerHasNoWork):
-            print("Server Has No Work.")
+    except (ConnectionError, KeyboardInterrupt) as e:
+        if isinstance(e, KeyboardInterrupt):
+            print("\nReceived KeyboardInterrupt")
+        else:
+            print(str(e))
