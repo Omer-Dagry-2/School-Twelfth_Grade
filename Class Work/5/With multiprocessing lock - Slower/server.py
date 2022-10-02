@@ -70,15 +70,18 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
         lock.acquire()
         num = number_of_checked_options
         lock.release()
-        if md5_hash_result is not None:  # if result found
-            value = 100  # 100%
-            checked_options_label.config(text="Found The Hashed Data: " + str(md5_hash_result))  # display result
-        else:  # else
-            value = (num * 100) / 10000000000  # percentage
-            checked_options_label.config(text="So Far %d Options Were Checked (%f"
-                                              % (num,
-                                                 value) + "%)")  # update number of checked oprtions
-        checked_options_progress_bar["value"] = value  # update progress bar
+        try:
+            if md5_hash_result is not None:  # if result found
+                value = 100  # 100%
+                checked_options_label.config(text="Found The Hashed Data: " + str(md5_hash_result))  # display result
+            else:  # else
+                value = (num * 100) / 10000000000  # percentage
+                checked_options_label.config(text="So Far %d Options Were Checked (%f"
+                                                  % (num,
+                                                     value) + "%)")  # update number of checked oprtions
+            checked_options_progress_bar["value"] = value  # update progress bar
+        except RuntimeError:  # GUI was closed
+            break
         time.sleep(2)
 
 
@@ -265,8 +268,10 @@ def main():
             lock.release()
             while threading.active_count() > 2:
                 time.sleep(2)
-        else:
+        try:
             lock.release()
+        except RuntimeError:
+            pass
 
 
 if __name__ == '__main__':

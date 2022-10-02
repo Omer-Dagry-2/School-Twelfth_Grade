@@ -12,6 +12,7 @@ from typing import *
 LOCAL_SERVER_IP = "0.0.0.0"
 LOCAL_SERVER_PORT = 8821
 IP = "127.0.0.1"
+# IP = "10.100.102.10"
 PORT = 8820
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
@@ -136,9 +137,9 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
         clients.append(client_socket)
     while clients and not local_server_stop:
         for client_socket in clients:
-            result = None
+            res = None
             try:
-                result = client_socket.recv(1024).decode()
+                res = client_socket.recv(1024).decode()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
                 if not isinstance(err, socket.error):
                     try:
@@ -147,25 +148,25 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
                         pass
                     clients.remove(client_socket)
                     continue
-            if result == "":
+            if res == "":
                 try:
                     client_socket.close()
                 except socket.error:
                     pass
                 clients.remove(client_socket)
                 continue
-            for res in result:
-                if res == "1":
-                    threading_lock.acquire()
-                    number_of_checked_options += 1
-                    threading_lock.release()
-                elif res == "2":
-                    try:
-                        client_socket.close()
-                    except socket.error:
-                        pass
-                    clients.remove(client_socket)
-                    continue
+            how_many_1 = res.count("1")
+            if how_many_1 > 0:
+                threading_lock.acquire()
+                number_of_checked_options += how_many_1
+                threading_lock.release()
+            if "2" in res:
+                try:
+                    client_socket.close()
+                except socket.error:
+                    pass
+                clients.remove(client_socket)
+                continue
     local_server_sock.close()
 
 
@@ -187,13 +188,13 @@ def main():
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
     # ------------------ just for testing, skip until result in range ------------------
-    if not start_from < 3735928559 < end_at:
-        msg = "not found.".rjust(32, " ").encode()
-        sent_amount = sock.send(msg)
-        while sent_amount != 32:
-            sent_amount += sock.send(msg[sent_amount:])
-        sock.close()
-        main()
+    # if not start_from < 3735928559 < end_at:
+    #     msg = "not found.".rjust(32, " ").encode()
+    #     sent_amount = sock.send(msg)
+    #     while sent_amount != 32:
+    #         sent_amount += sock.send(msg[sent_amount:])
+    #     sock.close()
+    #     main()
     # ----------------------------------------------------------------------------------
     total: int = end_at - start_from
     processes: list[multiprocessing.Process] = []
