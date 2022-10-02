@@ -3,6 +3,7 @@ import hashlib
 import socket
 import multiprocessing
 import queue
+import time
 from typing import *
 
 
@@ -21,18 +22,25 @@ class ServerHasNoWork(Exception):
     """ Raised When The Server Has No Work To Give """
 
 
-def recv_full(client_socket: socket.socket, msg_len: int) -> str:
+def recv_full(sock: socket.socket, msg_len: int) -> str:
     """ Loop On recv Until Received msg_len bytes From The Server """
-    client_socket.settimeout(5)
+    sock.settimeout(5)
     data = ""
     res = None
-    while len(data) != msg_len and res != "":
+    count = 0
+    while len(data) != msg_len and res != "" and count != 10:
         try:
-            res = client_socket.recv(msg_len - len(data)).decode()
-        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
-            raise ServerHasNoWork
-        data += res
-    client_socket.settimeout(None)
+            res = sock.recv(msg_len - len(data)).decode()
+        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
+            if not isinstance(err, socket.error):
+                sock.close()
+                main()
+                break
+        if res is not None:
+            data += res
+        count += 1
+        time.sleep(1)
+    sock.settimeout(None)
     return data
 
 
@@ -121,9 +129,15 @@ def main():
           "Start From:", str(start_from).rjust(10, "0"),
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
+    # ------------------ just for testing, skip until result in range ------------------
     # if not start_from < 3735928559 < end_at:
-    #     sock.send("not found.".encode())
+    #     msg = "not found.".rjust(32, " ").encode()
+    #     sent_amount = sock.send(msg)
+    #     while sent_amount != 32:
+    #         sent_amount += sock.send(msg[sent_amount:])
+    #     sock.close()
     #     main()
+    # ----------------------------------------------------------------------------------
     total: int = end_at - start_from
     processes: list[multiprocessing.Process] = []
     # communication with processes

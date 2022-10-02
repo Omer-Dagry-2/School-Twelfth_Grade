@@ -19,30 +19,33 @@ LEN_OF_MD5_HASHED_DATA: int = 10
 
 # Globals
 number_of_checked_options = 0
+local_server_stop = False
 
 
-class ServerHasNoWork(Exception):
-    """ Raised When The Server Has No Work To Give """
-
-
-def recv_full(client_socket: socket.socket, msg_len: int) -> str:
+def recv_full(sock: socket.socket, msg_len: int) -> str:
     """ Loop On recv Until Received msg_len bytes From The Server """
-    client_socket.settimeout(5)
+    sock.settimeout(5)
     data = ""
     res = None
-    while len(data) != msg_len and res != "":
+    count = 0
+    while len(data) != msg_len and res != "" and count != 10:
         try:
-            res = client_socket.recv(msg_len - len(data)).decode()
-        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
-            raise ServerHasNoWork
-        data += res
-    client_socket.settimeout(None)
+            res = sock.recv(msg_len - len(data)).decode()
+        except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
+            if not isinstance(err, socket.error):
+                sock.close()
+                main()
+                break
+        if res is not None:
+            data += res
+        count += 1
+        time.sleep(1)
+    sock.settimeout(None)
     return data
 
 
 def recv_range_and_hash_from_server(sock: socket.socket) -> tuple[int, int, str]:
     """ Receives The Range And MD5 hash From The Server """
-    print("Trying To Receive Range From The Server")
     # get my range
     my_range = recv_full(sock, 20)  # start_from (10 digits) & end_at (10 digits)
     start_from = int(my_range[:10])
@@ -110,23 +113,28 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int,
         pass
 
 
-def close_all_processes(processes: list[multiprocessing.Process]):
+def close_all_processes_and_sockets(processes: list[multiprocessing.Process], sockets: list[socket.socket]):
     """ Kills All The Processes That Were Created """
     for p_ in processes:
         if p_ is not multiprocessing.current_process():
             p_.kill()
-    print("killed all processes")
+    print("Killed All Processes")
+    for s_ in sockets:
+        while s_.send("2".encode()) != 1:
+            pass
+        s_.close()
+    print("Closed All Processes Sockets")
 
 
 def local_server_count_number_of_options(local_server_sock: socket.socket,
                                          threading_lock: threading.Lock):
-    global number_of_checked_options
+    global number_of_checked_options, local_server_stop
     clients: list[socket.socket] = []
     while len(clients) != CPU_COUNT:
         client_socket, client_addr = local_server_sock.accept()
         client_socket.settimeout(1.5)
         clients.append(client_socket)
-    while clients:
+    while clients and not local_server_stop:
         for client_socket in clients:
             res = None
             try:
@@ -152,7 +160,7 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
 
 
 def main():
-    global number_of_checked_options
+    global number_of_checked_options, local_server_stop
     print("Trying To Connect To The Server...")
     # open socket to server
     sock = socket.socket()
@@ -168,11 +176,18 @@ def main():
           "Start From:", str(start_from).rjust(10, "0"),
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
-    # if not start_from < 3735928559 < end_at:
-    #     sock.send("not found.".encode())
-    #     main()
+    # ------------------ just for testing, skip until result in range ------------------
+    if not start_from < 3735928559 < end_at:
+        msg = "not found.".rjust(32, " ").encode()
+        sent_amount = sock.send(msg)
+        while sent_amount != 32:
+            sent_amount += sock.send(msg[sent_amount:])
+        sock.close()
+        main()
+    # ----------------------------------------------------------------------------------
     total: int = end_at - start_from
     processes: list[multiprocessing.Process] = []
+    processes_sockets: list[socket.socket] = []
     # communication with processes
     multiprocessing_queue = multiprocessing.Queue()
     # local server socket, to communicate with the processes
@@ -195,6 +210,7 @@ def main():
         except ConnectionRefusedError:
             print("Local Server Error")
             exit()
+        processes_sockets.append(local_client_socket)
         # if it is the last process the range will be up to end_at
         # if the range isn't dividable by the cpu_count we will miss some options
         # so this fixes that problem
@@ -261,7 +277,7 @@ def main():
                 last_check_in = datetime.datetime.now()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 print("Lost Connection To Server. Exiting.")
-                close_all_processes(processes)
+                close_all_processes_and_sockets(processes, processes_sockets)
                 exit()
         # loop on all active processes
         for p in processes:
@@ -271,10 +287,10 @@ def main():
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
                 if not isinstance(err, socket.error):
                     print("Lost Connection To Server. Exiting.")
-                    close_all_processes(processes)
+                    close_all_processes_and_sockets(processes, processes_sockets)
                     exit()
             if res == b"stop":
-                close_all_processes(processes)
+                close_all_processes_and_sockets(processes, processes_sockets)
                 sock.close()
                 exit()
             # check if there is a process that finished
@@ -289,9 +305,12 @@ def main():
                     elif decrypted_md5_hash is not None:
                         print("\n\n" + "-" * 64)
                         print("Process Finished And Found The Encrypted Data:", decrypted_md5_hash)
-                        print("-" * 64 + "\n\n")
+                        print("-" * 64 + "\n")
                         # got result close all other processes
-                        close_all_processes(processes)
+                        close_all_processes_and_sockets(processes, processes_sockets)
+                        processes = []
+                        local_server_stop = True
+                        break
                 except queue.Empty:
                     pass
                 processes.remove(p)
@@ -317,16 +336,13 @@ def main():
             while sent_amount != 32:
                 sent_amount += sock.send(msg[sent_amount:])
             sock.close()
+            print("Sent 'Not Found' To Server.")
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error):
             print("Couldn't Send not found To Server. Connection Error")
             exit()
         print("-" * 64)
         print("Starting Again.")
-        try:
-            main()
-        except (ConnectionError, ServerHasNoWork) as err:
-            if isinstance(err, ServerHasNoWork):
-                print("Server Has No Work.")
+        main()
     else:
         sock.close()
 
@@ -334,8 +350,5 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ConnectionError, ServerHasNoWork, KeyboardInterrupt) as e:
-        if isinstance(e, ServerHasNoWork):
-            print("\nServer Has No Work.")
-        elif isinstance(e, KeyboardInterrupt):
-            print("\nReceived KeyboardInterrupt")
+    except KeyboardInterrupt as e:
+        print("\nReceived KeyboardInterrupt")

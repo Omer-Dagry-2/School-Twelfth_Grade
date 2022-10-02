@@ -14,7 +14,7 @@ PORT = 8820
 START = "0000000000"
 END = "9999999999"
 TOTAL = int(END) - int(START)
-MAX_CLIENTS: int = 100
+MAX_CLIENTS: int = 300
 
 # Globals
 number_of_checked_options = 0
@@ -66,13 +66,18 @@ def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
 
 def update_status_gui(checked_options_label: tkinter.Label, checked_options_progress_bar: ttk.Progressbar):
     """ Update The Status GUI """
-    global lock, number_of_checked_options
+    global lock, number_of_checked_options, md5_hash_result
     while True:
         lock.acquire()
-        checked_options_label.config(text="So Far %d Options Were Checked (%f"
-                                          % (number_of_checked_options,
-                                             (number_of_checked_options * 100) / 10000000000) + "%)")
-        checked_options_progress_bar["value"] = (number_of_checked_options * 100) / 10000000000
+        if md5_hash_result is not None:
+            value = 100
+            checked_options_label.config(text="Found The Encrypted Data: " + str(md5_hash_result))
+        else:
+            value = (number_of_checked_options * 100) / 10000000000
+            checked_options_label.config(text="So Far %d Options Were Checked (%f"
+                                              % (number_of_checked_options,
+                                                 value) + "%)")
+        checked_options_progress_bar["value"] = value
         lock.release()
 
 
@@ -106,6 +111,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
     answer = None
     client_socket.settimeout(2)
     last_check_in = datetime.datetime.now()
+    client_count = 0
     while answer is None:
         lock.acquire()
         if md5_hash_result is not None:
@@ -132,7 +138,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
                 elif "checked" in answer and "more" in answer:
                     last_check_in = datetime.datetime.now()
                     checked_x_more_options = int(answer.split("hecked '")[1].split("' mo")[0])
-                    print(checked_x_more_options)
+                    client_count += checked_x_more_options
                     lock.acquire()
                     number_of_checked_options += checked_x_more_options
                     lock.release()
@@ -164,6 +170,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
         lock.release()
     elif answer == "":
         lock.acquire()
+        number_of_checked_options -= client_count
         print_("'%s:%s' Disappeared." % client_socket.getpeername())
         range_ = clients_working_range[client_socket]
         if range_ in ranges:
@@ -176,6 +183,8 @@ def wait_for_result_from_client(client_socket: socket.socket):
         lock.release()
     elif answer != "" and answer != "not found.".rjust(32, " "):
         lock.acquire()
+        while answer.startswith(" "):
+            answer = answer[1:]
         md5_hash_result = answer
         lock.release()
 
@@ -223,7 +232,7 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
 
 
 def main():
-    global lock, md5_hash_result, dont_print
+    global lock, md5_hash_result, dont_print, number_of_checked_options
     start_time = datetime.datetime.now()
     print_("Start Time:", start_time)
     server_socket = start_server()
@@ -238,16 +247,21 @@ def main():
         if md5_hash_result is not None:
             print_("\n\n" + "-" * 64)
             print_("Found Result:", md5_hash_result)
-            print_("-" * 64 + "\n")
+            print_("-" * 64)
             end_time = datetime.datetime.now()
             print_(end_time)
             print_("Time Passed:", end_time - start_time)
-            dont_print = True
-            lock.release()
+            print_("Total Checked Options: '%d'" % number_of_checked_options)
             # wait until all the threads send their client to stop work and close themselves
             # 3 threads will remain. main thread, status gui thread, status gui update thread
-            while threading.active_count() > 3:
-                pass
+            #
+            # while threading.active_count() > 2 and not > 3 so that the GUI will stay open
+            # until it will be closed manually
+            print_("\nTo Close The Program Close The GUI Window.\nOr Press Ctrl + C")
+            dont_print = True
+            lock.release()
+            while threading.active_count() > 2:
+                time.sleep(2)
         try:
             lock.release()
         except RuntimeError:
