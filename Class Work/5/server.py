@@ -237,20 +237,15 @@ def accept_new_client_and_check_for_result(start_time: datetime.datetime.now):
             print_(end_time)
             print_("Time Passed:", end_time - start_time)
             print_("Total Checked Options: '%d'" % number_of_checked_options)
-            # wait until all the threads send their client to stop work and close themselves
-            # 3 threads will remain. main thread, status gui thread, status gui update thread
-            #
-            # while threading.active_count() > 2 and not > 3 so that the GUI will stay open
-            # until it will be closed manually
             print_("\nTo Close The Program Close The GUI Window.\nOr Press Ctrl + C")
             dont_print = True
             lock.release()
-            while threading.active_count() > 2:
-                time.sleep(2)
+            break  # found answer stop work
         try:
             lock.release()
         except RuntimeError:
             pass
+    server_socket.close()
 
 
 def main():

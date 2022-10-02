@@ -193,9 +193,6 @@ def main():
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
     # ------------------ just for testing, skip until result in range ------------------
-    # time.sleep(5)
-    # sock.send("3735928559".rjust(32, " ").encode())
-    # exit()
     # if not start_from < 3735928559 < end_at:
     #     msg = "not found.".rjust(32, " ").encode()
     #     sent_amount = sock.send(msg)
