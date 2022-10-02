@@ -11,8 +11,8 @@ from typing import *
 # Constants
 LOCAL_SERVER_IP = "0.0.0.0"
 LOCAL_SERVER_PORT = 8821
-# IP = "127.0.0.1"
-IP = "10.100.102.10"
+IP = "127.0.0.1"
+# IP = "10.100.102.10"
 PORT = 8820
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
