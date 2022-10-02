@@ -25,7 +25,7 @@ local_server_stop = False
 
 def recv_full(sock: socket.socket, msg_len: int) -> str:
     """ Loop On recv Until Received msg_len bytes From The Server """
-    sock.settimeout(5)
+    sock.settimeout(2)
     data = ""
     res = None
     count = 0
@@ -39,12 +39,12 @@ def recv_full(sock: socket.socket, msg_len: int) -> str:
                 break
         if res is not None:
             data += res
-        elif res == "no work":
-            print("Server Has No Work")
-            exit()
         count += 1
-        time.sleep(1)
+        time.sleep(0.5)
     sock.settimeout(None)
+    if res is None or res == "no work".rjust(20, " ") or res == "":
+        print("Server Has No Work")
+        exit()
     return data
 
 
@@ -151,7 +151,9 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
                         pass
                     clients.remove(client_socket)
                     continue
-            if res == "":
+            if res is None:
+                continue
+            elif res == "":
                 try:
                     client_socket.close()
                 except socket.error:

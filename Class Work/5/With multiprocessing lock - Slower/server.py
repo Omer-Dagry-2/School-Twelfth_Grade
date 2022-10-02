@@ -70,7 +70,7 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
         lock.acquire()
         num = number_of_checked_options
         lock.release()
-        # if this thread and main thread are active, it means the GUI thread is closed
+        # if this thread and server thread are active, it means the GUI thread is closed
         if threading.active_count() == 2:
             break
         try:
@@ -86,27 +86,6 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
         except RuntimeError:  # GUI was closed
             break
         time.sleep(2)
-
-
-def display_number_of_checked_options():
-    """ Initialize The Status GUI And Open A Thread To Update The GUI """
-    global lock, number_of_checked_options
-    main_window = tkinter.Tk()
-    main_window.title("Status")
-    lock.acquire()
-    checked_options_label = tkinter.Label(main_window,
-                                          text="So Far %d Options Were Checked." % number_of_checked_options,
-                                          font=("helvetica", 16))
-    lock.release()
-    checked_options_progress_bar = ttk.Progressbar(main_window, orient=tkinter.HORIZONTAL,
-                                                   length=300, mode="determinate")
-    checked_options_label.pack(pady=10)
-    checked_options_progress_bar.pack(pady=20)
-    update_status_gui_thread = threading.Thread(target=update_status_gui,
-                                                args=(checked_options_label, checked_options_progress_bar),
-                                                daemon=True)
-    update_status_gui_thread.start()
-    main_window.mainloop()
 
 
 def wait_for_result_from_client(client_socket: socket.socket):
@@ -181,10 +160,11 @@ def wait_for_result_from_client(client_socket: socket.socket):
         lock.acquire()
         number_of_checked_options -= client_count
         print_("'%s:%s' Disappeared." % client_socket.getpeername())
-        range_ = clients_working_range[client_socket]
-        if range_ in ranges:
-            ranges[ranges.index(range_)] = (range_[0], range_[1], "free")
-            print_("The Range", range_[:-1], "Is Available Again.")
+        if client_socket in clients_working_range:
+            range_ = clients_working_range[client_socket]
+            if range_ in ranges:
+                ranges[ranges.index(range_)] = (range_[0], range_[1], "free")
+                print_("The Range", range_[:-1], "Is Available Again.")
         lock.release()
         try:
             client_socket.close()
@@ -223,12 +203,12 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
     lock.release()
     if not found:
         try:
-            client_socket.send("no work".encode())
+            client_socket.send("no work".rjust(20, " ").encode())
             client_socket.close()
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             pass
         lock.acquire()
-        print_("Didn't Found Work For '%s:%s' * OR * "
+        print_("Didn't Found Work For '%s:%s' * OR * "+
                "Socket Error When Trying To Send Work. Connection Closed" % client_socket.getpeername())
         lock.release()
     else:
@@ -240,13 +220,9 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
         lock.release()
 
 
-def main():
+def accept_new_client_and_check_for_result(start_time: datetime.datetime.now):
     global lock, md5_hash_result, dont_print, number_of_checked_options
-    start_time = datetime.datetime.now()
-    print_("Start Time:", start_time)
     server_socket = start_server()
-    gui_thread = threading.Thread(target=display_number_of_checked_options, daemon=True)
-    gui_thread.start()
     while ranges:
         if True in [True if p_r[-1] == "free" else False for p_r in ranges]:
             client_socket = accept_client(server_socket)
@@ -275,6 +251,35 @@ def main():
             lock.release()
         except RuntimeError:
             pass
+
+
+def main():
+    start_time = datetime.datetime.now()
+    print_("Start Time:", start_time)
+    accept_new_client_and_check_for_result_thread = threading.Thread(target=accept_new_client_and_check_for_result,
+                                                                     args=(start_time,), daemon=True)
+    accept_new_client_and_check_for_result_thread.start()
+    # --------------- GUI ---------------
+    global lock, number_of_checked_options
+    status_gui = tkinter.Tk()
+    status_gui.title("Status")
+    lock.acquire()
+    checked_options_label = tkinter.Label(status_gui,
+                                          text="So Far %d Options Were Checked." % number_of_checked_options,
+                                          font=("helvetica", 16))
+    lock.release()
+    checked_options_progress_bar = ttk.Progressbar(status_gui, orient=tkinter.HORIZONTAL,
+                                                   length=300, mode="determinate")
+    checked_options_label.pack(pady=10)
+    checked_options_progress_bar.pack(pady=20)
+    update_status_gui_thread = threading.Thread(target=update_status_gui,
+                                                args=(checked_options_label, checked_options_progress_bar),
+                                                daemon=True)
+    update_status_gui_thread.start()
+    status_gui.mainloop()
+    print("GUI Closed")
+    while accept_new_client_and_check_for_result_thread.is_alive():
+        time.sleep(10)
 
 
 if __name__ == '__main__':

@@ -20,7 +20,7 @@ multiprocessing_lock = multiprocessing.Lock()
 
 def recv_full(sock: socket.socket, msg_len: int) -> str:
     """ Loop On recv Until Received msg_len bytes From The Server """
-    sock.settimeout(5)
+    sock.settimeout(2)
     data = ""
     res = None
     count = 0
@@ -35,8 +35,11 @@ def recv_full(sock: socket.socket, msg_len: int) -> str:
         if res is not None:
             data += res
         count += 1
-        time.sleep(1)
+        time.sleep(0.5)
     sock.settimeout(None)
+    if res is None or res == "no work".rjust(20, " ") or res == "":
+        print("Server Has No Work")
+        exit()
     return data
 
 
