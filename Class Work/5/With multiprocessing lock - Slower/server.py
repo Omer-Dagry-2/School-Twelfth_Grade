@@ -51,13 +51,12 @@ def start_server() -> socket.socket:
 def accept_client(server_socket: socket.socket) -> Union[socket.socket, None]:
     """ Try To Accept New Client And Add To Clients List """
     global clients_sockets
-    lock.acquire()
     server_socket.settimeout(2)
     try:
         client_socket, client_addr = server_socket.accept()
     except (socket.error, ConnectionRefusedError):
-        lock.release()
         return None
+    lock.acquire()
     print_("New Connection From: '%s:%s'" % (client_addr[0], client_addr[1]))
     clients_sockets.append(client_socket)
     lock.release()
@@ -92,9 +91,9 @@ def display_number_of_checked_options():
     checked_options_label = tkinter.Label(main_window,
                                           text="So Far %d Options Were Checked." % number_of_checked_options,
                                           font=("helvetica", 16))
+    lock.release()
     checked_options_progress_bar = ttk.Progressbar(main_window, orient=tkinter.HORIZONTAL,
                                                    length=300, mode="determinate")
-    lock.release()
     checked_options_label.pack(pady=10)
     checked_options_progress_bar.pack(pady=20)
     update_status_gui_thread = threading.Thread(target=update_status_gui,
@@ -117,10 +116,12 @@ def wait_for_result_from_client(client_socket: socket.socket):
     while answer is None:
         lock.acquire()
         if md5_hash_result is not None:
+            lock.release()
             try:
                 client_socket.send("stop".encode())
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 pass
+            lock.acquire()
             print_("Sent Client stop, md5 hash result found.")
             answer = "not found."
             lock.release()
@@ -152,7 +153,7 @@ def wait_for_result_from_client(client_socket: socket.socket):
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             answer = ""
             break
-        if (datetime.datetime.now() - last_check_in).seconds >= 120:
+        if (datetime.datetime.now() - last_check_in).seconds >= 80:
             lock.acquire()
             print_("'%s:%s' Didn't Check In For 120 Seconds, Closing Connection." % client_socket.getpeername())
             lock.release()
@@ -178,15 +179,15 @@ def wait_for_result_from_client(client_socket: socket.socket):
         if range_ in ranges:
             ranges[ranges.index(range_)] = (range_[0], range_[1], "free")
             print_("The Range", range_[:-1], "Is Available Again.")
+        lock.release()
         try:
             client_socket.close()
         except socket.error:
             pass
-        lock.release()
     elif answer != "" and answer != "not found.".rjust(32, " "):
-        lock.acquire()
         while answer.startswith(" "):
             answer = answer[1:]
+        lock.acquire()
         md5_hash_result = answer
         lock.release()
 
@@ -197,8 +198,8 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
     Starts A Thread That Will Check On The Client
     """
     global clients_working_range, ranges
-    lock.acquire()
     found = False
+    lock.acquire()
     for i in range(0, len(ranges)):
         possible_range: tuple[str, str, str] = ranges[i]
         if possible_range[-1] == "free":
@@ -225,9 +226,9 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket):
                "Socket Error When Trying To Send Work. Connection Closed" % client_socket.getpeername())
         lock.release()
     else:
-        lock.acquire()
         t = threading.Thread(target=wait_for_result_from_client, args=(client_socket,), daemon=True)
         t.start()
+        lock.acquire()
         print_("Started A Thread To Wait For '%s:%s' Result."
                % client_socket.getpeername())
         lock.release()
@@ -264,10 +265,8 @@ def main():
             lock.release()
             while threading.active_count() > 2:
                 time.sleep(2)
-        try:
+        else:
             lock.release()
-        except RuntimeError:
-            exit()
 
 
 if __name__ == '__main__':

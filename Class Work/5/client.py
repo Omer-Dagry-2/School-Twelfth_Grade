@@ -136,9 +136,9 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
         clients.append(client_socket)
     while clients and not local_server_stop:
         for client_socket in clients:
-            res = None
+            result = None
             try:
-                res = client_socket.recv(1).decode()
+                result = client_socket.recv(1024).decode()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError, socket.error) as err:
                 if not isinstance(err, socket.error):
                     try:
@@ -146,16 +146,26 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
                     except socket.error:
                         pass
                     clients.remove(client_socket)
-            if res == "1":
-                threading_lock.acquire()
-                number_of_checked_options += 1
-                threading_lock.release()
-            elif res == "" or res == "2":
+                    continue
+            if result == "":
                 try:
                     client_socket.close()
                 except socket.error:
                     pass
                 clients.remove(client_socket)
+                continue
+            for res in result:
+                if res == "1":
+                    threading_lock.acquire()
+                    number_of_checked_options += 1
+                    threading_lock.release()
+                elif res == "2":
+                    try:
+                        client_socket.close()
+                    except socket.error:
+                        pass
+                    clients.remove(client_socket)
+                    continue
     local_server_sock.close()
 
 
@@ -177,13 +187,13 @@ def main():
           "| End At:", str(end_at).rjust(10, "0"),
           "| MD5 Hash To Brute Force:", md5_hash)
     # ------------------ just for testing, skip until result in range ------------------
-    # if not start_from < 3735928559 < end_at:
-    #     msg = "not found.".rjust(32, " ").encode()
-    #     sent_amount = sock.send(msg)
-    #     while sent_amount != 32:
-    #         sent_amount += sock.send(msg[sent_amount:])
-    #     sock.close()
-    #     main()
+    if not start_from < 3735928559 < end_at:
+        msg = "not found.".rjust(32, " ").encode()
+        sent_amount = sock.send(msg)
+        while sent_amount != 32:
+            sent_amount += sock.send(msg[sent_amount:])
+        sock.close()
+        main()
     # ----------------------------------------------------------------------------------
     total: int = end_at - start_from
     processes: list[multiprocessing.Process] = []
@@ -265,15 +275,16 @@ def main():
         if not (processes and decrypted_md5_hash is None):
             time.sleep(2)
         # send the server the amount of options that were checked since the last time we sent
-        if (datetime.datetime.now() - last_check_in).seconds >= 5:
+        if (datetime.datetime.now() - last_check_in).seconds >= 8:
             try:
                 threading_lock.acquire()
-                msg = ("checked '%d' more" % number_of_checked_options).rjust(32, " ").encode()
+                num = number_of_checked_options
+                number_of_checked_options = 0
+                threading_lock.release()
+                msg = ("checked '%d' more" % num).rjust(32, " ").encode()
                 sent_amount = sock.send(msg)
                 while sent_amount != 32:
                     sent_amount += sock.send(msg[sent_amount:])
-                number_of_checked_options = 0
-                threading_lock.release()
                 last_check_in = datetime.datetime.now()
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 print("Lost Connection To Server. Exiting.")
@@ -314,6 +325,7 @@ def main():
                 except queue.Empty:
                     pass
                 processes.remove(p)
+        time.sleep(2)
     # sent result to server if found
     # else tell server that the range doesn't contain the result and
     # close connection to server and start again (a new range will be given)
