@@ -69,16 +69,18 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
     global lock, number_of_checked_options, md5_hash_result
     while True:
         lock.acquire()
-        if md5_hash_result is not None:
-            value = 100
-            checked_options_label.config(text="Found The Encrypted Data: " + str(md5_hash_result))
-        else:
-            value = (number_of_checked_options * 100) / 10000000000
-            checked_options_label.config(text="So Far %d Options Were Checked (%f"
-                                              % (number_of_checked_options,
-                                                 value) + "%)")
-        checked_options_progress_bar["value"] = value
+        num = number_of_checked_options
         lock.release()
+        if md5_hash_result is not None:  # if result found
+            value = 100  # 100%
+            checked_options_label.config(text="Found The Hashed Data: " + str(md5_hash_result))  # display result
+        else:  # else
+            value = (num * 100) / 10000000000  # percentage
+            checked_options_label.config(text="So Far %d Options Were Checked (%f"
+                                              % (num,
+                                                 value) + "%)")  # update number of checked oprtions
+        checked_options_progress_bar["value"] = value  # update progress bar
+        time.sleep(2)
 
 
 def display_number_of_checked_options():

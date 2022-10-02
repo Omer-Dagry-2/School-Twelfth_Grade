@@ -219,7 +219,7 @@ def main():
                         decrypted_md5_hash = None
                     else:
                         print("\n\n" + "-" * 64)
-                        print("Process Finished And Found The Encrypted Data:", decrypted_md5_hash)
+                        print("Process Finished And Found The Hashed Data:", decrypted_md5_hash)
                         print("-" * 64 + "\n\n")
                         # got result close all other processes
                         close_all_processes(processes)
