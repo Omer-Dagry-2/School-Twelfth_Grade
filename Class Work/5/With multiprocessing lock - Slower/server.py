@@ -70,9 +70,6 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
         lock.acquire()
         num = number_of_checked_options
         lock.release()
-        # if this thread and server thread are active, it means the GUI thread is closed
-        if threading.active_count() == 2:
-            break
         try:
             if md5_hash_result is not None:  # if result found
                 value = 100  # 100%
@@ -81,7 +78,7 @@ def update_status_gui(checked_options_label: tkinter.Label, checked_options_prog
                 value = (num * 100) / 10000000000  # percentage
                 checked_options_label.config(text="So Far %d Options Were Checked (%f"
                                                   % (num,
-                                                     value) + "%)")  # update number of checked oprtions
+                                                     value) + "%)")  # update number of checked options
             checked_options_progress_bar["value"] = value  # update progress bar
         except RuntimeError:  # GUI was closed
             break
@@ -208,7 +205,7 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket, client_ip_
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             pass
         lock.acquire()
-        print_("Didn't Found Work For '%s:%s' * OR * "+
+        print_("Didn't Found Work For '%s:%s' * OR * " +
                "Socket Error When Trying To Send Work. Connection Closed" % client_ip_port)
         lock.release()
     else:

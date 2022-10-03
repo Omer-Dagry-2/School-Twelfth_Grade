@@ -87,32 +87,44 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int,
                 if res is not None and "stop" in res and base_string_length != 10:  # finished range
                     return res
                 elif res is not None and "stop" in res:  # finished range, first recursive loop
-                    sent_amount = local_client_socket.send("2".encode())
-                    while sent_amount != 1:
-                        sent_amount = local_client_socket.send("2".encode())
+                    while local_client_socket.send("2".encode()) != 1:
+                        pass
                     local_client_socket.close()
                     multiprocessing_queue.put("not found, stopped at '%s'" % res.split("top, ")[1])
                     break
                 elif res is not None and base_string_length != 10:  # found answer
                     return res
                 elif res is not None:  # found answer, first recursive loop
-                    sent_amount = local_client_socket.send("2".encode())
-                    while sent_amount != 1:
-                        sent_amount = local_client_socket.send("2".encode())
+                    while local_client_socket.send("2".encode()) != 1:
+                        pass
                     local_client_socket.close()
                     multiprocessing_queue.put(res)
                     break
             else:
-                sent_amount = local_client_socket.send("1".encode())
-                while sent_amount != 1:
-                    sent_amount = local_client_socket.send("1".encode())
-                current_string_ = current_string + number
-                if hashlib.md5(current_string_.encode()).hexdigest().lower() == md5_hash.lower():
-                    return current_string_
-                if current_string_ == end_at:
-                    return "stop, " + current_string_
+                while local_client_socket.send("1".encode()) != 1:
+                    pass
+                if hashlib.md5((current_string + number).encode()).hexdigest().lower() == md5_hash.lower():
+                    return current_string + number
+                if current_string + number == end_at:
+                    return "stop, " + current_string + number
         if base_string_length != 10:
             return None
+        # ------------------------------- Not Recursive ---------------------------------
+        # I run a test and the recursive found the result faster (about 8% faster)
+        #
+        # found = False
+        # md5_hash = md5_hash.lower()
+        # for option in range(int(start_from), int(end_at) + 1):
+        #     option = str(option).zfill(base_string_length)
+        #     while local_client_socket.send("1".encode()) != 1:
+        #         pass
+        #     if hashlib.md5(option.encode()).hexdigest().lower() == md5_hash:
+        #         multiprocessing_queue.put(option)
+        #         found = True
+        #         break
+        # if not found:
+        #     multiprocessing_queue.put("not found, stopped at '%s'")
+        # -------------------------------------------------------------------------------
     except KeyboardInterrupt:
         pass
 
