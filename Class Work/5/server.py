@@ -12,7 +12,8 @@ MD5_HASH = "EC9C0F7EDCC18A98B1F31853B1813301".lower()
 IP = "0.0.0.0"
 PORT = 8820
 START = "0000000000"
-END = "9999999999"
+LEN_OF_MD5_HASHED_DATA: int = 10
+END = str((10 ** LEN_OF_MD5_HASHED_DATA) - 1)
 TOTAL = int(END) - int(START)
 MAX_CLIENTS: int = 27
 
@@ -135,9 +136,10 @@ def wait_for_result_from_client(client_socket: socket.socket, client_ip_port: tu
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             answer = ""
             break
-        if (datetime.datetime.now() - last_check_in).seconds >= 80:
+        if (datetime.datetime.now() - last_check_in).seconds >= 25:
+            # client is supposed to check in every 8 seconds
             lock.acquire()
-            print_("'%s:%s' Didn't Check In For 120 Seconds, Closing Connection." % client_ip_port)
+            print_("'%s:%s' Didn't Check In For 25 Seconds, Closing Connection." % client_ip_port)
             lock.release()
             try:
                 client_socket.send("stop".encode())
@@ -190,6 +192,7 @@ def distribute_work_and_wait_for_result(client_socket: socket.socket, client_ip_
             try:
                 client_socket.send(possible_range[0].encode() + possible_range[1].encode())
                 client_socket.send(MD5_HASH.encode())
+                client_socket.send(str(LEN_OF_MD5_HASHED_DATA).zfill(32).encode())
             except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
                 break
             ranges[i] = (possible_range[0], possible_range[1], "taken")

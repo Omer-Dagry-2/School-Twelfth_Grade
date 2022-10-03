@@ -16,9 +16,10 @@ IP = "127.0.0.1"
 PORT = 8820
 NUMBERS = "0123456789"
 CPU_COUNT = multiprocessing.cpu_count()
-LEN_OF_MD5_HASHED_DATA: int = 10
+# LEN_OF_MD5_HASHED_DATA: int = 10
 
 # Globals
+len_of_md5_hashed_data: int = 0
 number_of_checked_options = 0
 local_server_stop = False
 
@@ -50,11 +51,16 @@ def recv_full(sock: socket.socket, msg_len: int) -> str:
 
 def recv_range_and_hash_from_server(sock: socket.socket) -> tuple[int, int, str]:
     """ Receives The Range And MD5 hash From The Server """
+    global len_of_md5_hashed_data
     # get my range
     my_range = recv_full(sock, 20)  # start_from (10 digits) & end_at (10 digits)
     start_from = int(my_range[:10])
     end_at = int(my_range[10:])
     md5_hash = recv_full(sock, 32).lower()  # the md5 hash (32 digit)
+    len_of_md5_hashed_data = int(recv_full(sock, 32))
+    if len_of_md5_hashed_data <= 0:
+        print("Error Received Non Positive Value For The Len Of The MD5 Hashed Data")
+        exit()
     return start_from, end_at, md5_hash
 
 
@@ -188,7 +194,7 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
 
 
 def main():
-    global number_of_checked_options, local_server_stop
+    global number_of_checked_options, local_server_stop, len_of_md5_hashed_data
     print("Trying To Connect To The Server...")
     # open socket to server
     sock = socket.socket()
@@ -200,6 +206,9 @@ def main():
     print("Connected To Server.")
     # recv data
     start_from, end_at, md5_hash = recv_range_and_hash_from_server(sock)
+    if len_of_md5_hashed_data <= 0:
+        print("Error Received Non Positive Value For The Len Of The MD5 Hashed Data")
+        exit()
     print("Server Sent: "
           "Start From:", str(start_from).rjust(10, "0"),
           "| End At:", str(end_at).rjust(10, "0"),
@@ -245,7 +254,7 @@ def main():
         if i == CPU_COUNT - 1:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(
-                                            md5_hash.lower(), LEN_OF_MD5_HASHED_DATA,
+                                            md5_hash.lower(), len_of_md5_hashed_data,
                                             multiprocessing_queue,
                                             str(start_from).rjust(10, "0"),
                                             str(int(end_at)).rjust(10, "0"),
@@ -261,7 +270,7 @@ def main():
         else:
             p = multiprocessing.Process(target=brute_force_decrypt_md5,
                                         args=(
-                                            md5_hash.lower(), LEN_OF_MD5_HASHED_DATA,
+                                            md5_hash.lower(), len_of_md5_hashed_data,
                                             multiprocessing_queue,
                                             str(start_from).rjust(10, "0"),
                                             str(start_from + (total // CPU_COUNT) - 1).rjust(10, "0"),
