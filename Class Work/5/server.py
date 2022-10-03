@@ -173,7 +173,8 @@ def wait_for_result_from_client(client_socket: socket.socket, client_ip_port: tu
         while answer.startswith(" "):
             answer = answer[1:]
         lock.acquire()
-        md5_hash_result = answer
+        if md5_hash_result is None:
+            md5_hash_result = answer
         lock.release()
 
 

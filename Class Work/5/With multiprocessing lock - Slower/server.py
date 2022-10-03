@@ -135,9 +135,9 @@ def wait_for_result_from_client(client_socket: socket.socket, client_ip_port: tu
         except (ConnectionAbortedError, ConnectionError, ConnectionResetError):
             answer = ""
             break
-        if (datetime.datetime.now() - last_check_in).seconds >= 80:
+        if (datetime.datetime.now() - last_check_in).seconds >= 25:
             lock.acquire()
-            print_("'%s:%s' Didn't Check In For 120 Seconds, Closing Connection." % client_ip_port)
+            print_("'%s:%s' Didn't Check In For 25 Seconds, Closing Connection." % client_ip_port)
             lock.release()
             try:
                 client_socket.send("stop".encode())
@@ -171,7 +171,8 @@ def wait_for_result_from_client(client_socket: socket.socket, client_ip_port: tu
         while answer.startswith(" "):
             answer = answer[1:]
         lock.acquire()
-        md5_hash_result = answer
+        if md5_hash_result is None:
+            md5_hash_result = answer
         lock.release()
 
 
