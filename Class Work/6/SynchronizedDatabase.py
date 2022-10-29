@@ -12,8 +12,8 @@ from Database import Database
 class SynchronizedDatabase(Database):
     def __init__(self,
                  mode: int = 1,
-                 number_of_processes: int = multiprocessing.cpu_count(),
-                 number_of_threads: int = multiprocessing.cpu_count(),
+                 number_of_processes: int = multiprocessing.cpu_count() * 2,
+                 number_of_threads: int = multiprocessing.cpu_count() * 10,
                  max_reads_together: int = 10):
         #
         # check that the mode is valid
@@ -75,7 +75,12 @@ class SynchronizedDatabase(Database):
             time.sleep(0.1)  # prevent high cpu usage
         self.semaphore.acquire()
         # print(f"get {key}   {self.get_edit_and_read_lock_value() == 1}")
-        val = super().__getitem__(key)
+        try:
+            val = super().__getitem__(key)
+        # make sure that the lock is released even if KeyError raised
+        except KeyError as key_error:
+            self.semaphore.release()
+            raise key_error
         # release the lock
         self.semaphore.release()
         return val
@@ -91,36 +96,39 @@ class SynchronizedDatabase(Database):
         # wait until every one who was already reading is done
         while self.get_semaphore_value() != self.max_reads_together:
             time.sleep(0.1)  # prevent high cpu usage
-        # here there is no one reading and or writing, so we can set key: val
-        val = super().pop(key)
+        # here there is no one reading and or writing, so we can pop the key
+        try:
+            val = super().pop(key)
+        # make sure that the lock is released even if KeyError raised
+        except KeyError as key_error:
+            self.edit_and_read_lock.release()
+            raise key_error
         # release the lock
         self.edit_and_read_lock.release()
         return val
 
-    def work(self, my_name: str, range_end: int):
-        """ Work for workers """
-        # print(f"setting '{range_end}' values")
-        for i in range(range_end):  # sets & gets
+    def work(self, my_name: str, range_end: int, mode: str):
+        """ Work for workers (mode = "set" / "get" / "pop") """
+        for i in range(range_end):
             key: str = f"{my_name} {i}"
             val: int = i
-            self[key] = val  # set
-            if not self[key] == val:  # get
-                print(f"Error {key} {val}")
-        # print(f"'{range_end}' values are set")
-        # print(f"getting {range_end} values")
-        for i in range(range_end):  # gets
-            key: str = f"{my_name} {i}"
-            val: int = i
-            if not self[key] == val:  # get
-                print(f"Error {key} {val}")
-        # print(f"got '{range_end}' values")
-        # print(f"popping {range_end} values")
-        for i in range(range_end // 2):  # pops
-            key: str = f"{my_name} {i}"
-            val: int = i
-            if self.pop(key) != val:  # pop
-                print(f"Error {key} != {val}")
-        # print(f"popped '{range_end}' values")
+            if mode == "set":
+                self[key] = val  # set
+            elif mode == "get":
+                try:
+                    if val != self[key]:
+                        print(f"Error the value of key '{key}' should be {val} but isn't")
+                except KeyError:  # if key isn't set yet or key already have been popped
+                    pass
+            elif mode == "pop":
+                while True:
+                    try:
+                        if val != self.pop(key):
+                            print(f"Error the value of key '{key}' should be {val} but isn't")
+                        break
+                    except KeyError:  # if key isn't set yet
+                        pass
+                    time.sleep(0.1)  # prevent high cpu usage
 
     def create_workers(self, range_end=300) -> bool:
         """ Create All The Workers """
@@ -129,9 +137,15 @@ class SynchronizedDatabase(Database):
             init_thread_or_process = threading.Thread if self.mode == 0 else multiprocessing.Process
             range_ = range(self.number_of_threads) if self.mode == 0 else range(self.number_of_processes)
             name = "Thread" if self.mode == 0 else "Process"
+            modes = ["set", "get", "pop"]
             for i in range_:
                 thread_or_process = init_thread_or_process(target=self.work,
-                                                           args=(f"{name}-{i + 1}", range_end), daemon=True)
+                                                           args=(
+                                                               f"{name}-{i // 3}",
+                                                               range_end,
+                                                               modes[i % 3]
+                                                           ),
+                                                           daemon=True)
                 self.threads_or_processes_pool.append(thread_or_process)
                 pool.append(thread_or_process)
             self.can_start = True

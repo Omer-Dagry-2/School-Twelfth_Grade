@@ -28,8 +28,8 @@ class CheckDatabase:
         print("\r" + "\x1b[0m", end="")  # delete animation row
 
     def create_database(self, mode: int, range_end: int,
-                        number_of_processes: int = multiprocessing.cpu_count(),
-                        number_of_threads: int = os.cpu_count(),
+                        number_of_processes: int = multiprocessing.cpu_count() * 2,
+                        number_of_threads: int = multiprocessing.cpu_count() * 10,
                         max_reads_together: int = 10):
         synchronized_database = SynchronizedDatabase(mode=mode,
                                                      number_of_processes=number_of_processes,
@@ -42,8 +42,8 @@ class CheckDatabase:
         self.database = synchronized_database.get_database()
 
     def _check(self, mode: int, range_end: int,
-               number_of_processes: int = multiprocessing.cpu_count(),
-               number_of_threads: int = os.cpu_count(),
+               number_of_processes: int = multiprocessing.cpu_count() * 2,
+               number_of_threads: int = multiprocessing.cpu_count() * 10,
                max_reads_together: int = 10):
         global stop
         stop = False
@@ -54,12 +54,35 @@ class CheckDatabase:
                              number_of_processes=number_of_processes,
                              number_of_threads=number_of_threads,
                              max_reads_together=max_reads_together)
-        name = "Thread" if mode == 0 else "Process"
-        range_ = range(1, number_of_threads) if mode == 0 else range(1, number_of_processes)
-        all_keys = [f"{name}-{i}" for i in range_]
-        range_ = range(range_end // 2, range_end) if mode == 0 else range(range_end // 2, range_end)
-        for name in all_keys:
-            for i in range_:
+        stop = True
+        animation_thread.join()
+        #
+        range_ = range(number_of_threads) if mode == 0 else range(number_of_processes)
+        all_keys = [f"{'Thread' if mode == 0 else 'Process'}-{i // 3}" for i in range_]
+        # the `work` function in SynchronizedDatabase class gives work like this:
+        # first process or thread gets SET work
+        # second gets GET work
+        # third gets POP work
+        # every 3 processes / threads work on the same variables, so if the number_of_processes/threads % 3 == 0
+        # the database will be empty at the end
+        #
+        #                                   ** so 2 options **
+        # **** OPTION 1 ****
+        # if the number_of_threads/processes that was open % 3 == 0, self.database should be equal to {}
+        # **** OPTION 2 ****
+        # if the number_of_threads/processes % 3 != 0, (== 1 or == 2) which means
+        # that if the result of number_of_threads/processes % 3 == 1
+        # there will be a thread/process that will do SET work and ** no one will delete his work **.
+        # or if the result == 2 there will be a processes/thread that will do SET work and another
+        # process/thread that will do GET work but still there will be ** no one to POP (delete) the work **.
+        # so if number_of_threads/processes % 3 != 0 the work of the last process/thread that did SET work should stay.
+        # self.database = {the work of the process that didn't have 2 more "teammates"}
+        if (mode == 0 and number_of_threads % 3 == 0) or (mode == 1 and number_of_processes % 3 == 0):
+            if self.database == {}:
+                result = True
+        else:
+            name = all_keys[-1]
+            for i in range(range_end):
                 try:
                     if self.database[f"{name} {i}"] != i:
                         print(f"Error, '{f'{name} {i}'}' != {i}")
@@ -67,42 +90,36 @@ class CheckDatabase:
                 except KeyError:
                     print(f"Error, missing the key '{f'{name} {i}'}'")
                     result = False
-        stop = True
-        animation_thread.join()
         return result
 
     def check_multiprocessing_and_threading(self,
                                             threading_range_end: int = 30,
                                             multiprocessing_range_end: int = 300,
-                                            number_of_processes: int = multiprocessing.cpu_count(),
-                                            number_of_threads: int = os.cpu_count(),
+                                            number_of_processes: int = multiprocessing.cpu_count() * 2,
+                                            number_of_threads: int = multiprocessing.cpu_count() * 10,
                                             max_reads_together: int = 10):
         # check threading
         start = datetime.datetime.now()
-        print("Starting Check For Threading")
+        print(f"Starting Check For Threading (on {number_of_threads} threads)")
         result = self._check(0, threading_range_end,
                              number_of_threads=number_of_threads, max_reads_together=max_reads_together)
-        print("-" * 64)
+        total = number_of_threads * threading_range_end if result else "Unknown, Failed."
+        print(f"Time Passed: {str(datetime.datetime.now() - start).split('.')[0]}, Total Operations: {total}")
         if not result:
-            print(" " * 28 + "FAILED")
+            print(" FAILED ".center(64, "-"))
         else:
-            print(" " * 28 + "PASSED\n")
-        total = number_of_threads * threading_range_end * 3
-        total += total / 3 // 2
-        print(f"Time Passed: {str(datetime.datetime.now() - start).split('.')[0]}, Total Operations: {int(total)}")
+            print(" PASSED ".center(64, "-"))
         # check multiprocessing
         start = datetime.datetime.now()
-        print("Starting Check For Multiprocessing")
+        print(f"Starting Check For Multiprocessing (on {number_of_processes} processes)")
         result = self._check(1, multiprocessing_range_end,
                              number_of_processes=number_of_processes, max_reads_together=max_reads_together)
-        print("-" * 64)
+        total = number_of_processes * multiprocessing_range_end if result else "Unknown, Failed."
+        print(f"Time Passed: {str(datetime.datetime.now() - start).split('.')[0]}, Total Operations: {total}")
         if not result:
-            print(" " * 28 + "FAILED")
+            print(" FAILED ".center(64, "-"))
         else:
-            print(" " * 28 + "PASSED\n")
-        total = number_of_processes * multiprocessing_range_end * 3
-        total += total / 3 // 2
-        print(f"Time Passed: {str(datetime.datetime.now() - start).split('.')[0]}, Total Operations: {int(total)}")
+            print(" PASSED ".center(64, "-"))
 
 
 def main():
