@@ -17,20 +17,28 @@ class Rectangle(Shape):
         super().__init__(color=color)
         self.width = width
         self.length = length
-        self.set_area(self.width * self.length)
-        self.set_perimeter(self.width * 2 + self.length * 2)
+        super().set_area(self.width * self.length)
+        super().set_perimeter(self.width * 2 + self.length * 2)
+
+    def set_area(self, area: Union[int, float]):
+        """ Don't Allow To Only Change The Area """
+        return
+
+    def set_perimeter(self, perimeter: Union[int, float]):
+        """ Don't Allow To Only Change The Perimeter """
+        return
 
     def set_width(self, width: Union[int, float]):
         """ Set Rectangle Width """
         self.width = width
-        self.set_area(self.width * self.length)
-        self.set_perimeter(self.width * 2 + self.length * 2)
+        super().set_area(self.width * self.length)
+        super().set_perimeter(self.width * 2 + self.length * 2)
 
     def set_length(self, length: Union[int, float]):
         """ Set Rectangle Length """
         self.length = length
-        self.set_area(self.width * self.length)
-        self.set_perimeter(self.width * 2 + self.length * 2)
+        super().set_area(self.width * self.length)
+        super().set_perimeter(self.width * 2 + self.length * 2)
 
     def get_width(self) -> Union[int, float]:
         """ Get Rectangle Width """
@@ -69,3 +77,11 @@ class Rectangle(Shape):
             return Rectangle(width=width, length=length)
         else:
             return None
+
+
+_ = Rectangle(5, 4)
+assert _.get_area() == 20
+assert _.get_perimeter() == 18
+assert _.get_width() == 5
+assert _.get_length() == 4
+del _

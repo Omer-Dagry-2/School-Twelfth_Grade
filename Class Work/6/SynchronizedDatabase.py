@@ -1,5 +1,6 @@
 import os
 import time
+import pickle
 import threading
 import multiprocessing
 
@@ -14,13 +15,14 @@ class SynchronizedDatabase(Database):
                  mode: int = 1,
                  number_of_processes: int = multiprocessing.cpu_count() * 2,
                  number_of_threads: int = multiprocessing.cpu_count() * 10,
-                 max_reads_together: int = 10):
+                 max_reads_together: int = 10,
+                 database_file_name: str = "database"):
         #
         # check that the mode is valid
         if mode not in [0, 1]:
             raise ValueError("the arg 'mode' can be 0 or 1, 0 for threads, 1 for processes.")
         # call super()
-        super().__init__()
+        super().__init__(database_file_name=database_file_name)
         # set params
         self.mode = mode
         self.number_of_processes = number_of_processes
@@ -107,6 +109,7 @@ class SynchronizedDatabase(Database):
         self.edit_and_read_lock.release()
         return val
 
+    @staticmethod
     def work(self, my_name: str, range_end: int, mode: str):
         """ Work for workers (mode = "set" / "get" / "pop") """
         for i in range(range_end):
@@ -141,6 +144,7 @@ class SynchronizedDatabase(Database):
             for i in range_:
                 thread_or_process = init_thread_or_process(target=self.work,
                                                            args=(
+                                                               self,
                                                                f"{name}-{i // 3}",
                                                                range_end,
                                                                modes[i % 3]
@@ -175,3 +179,24 @@ class SynchronizedDatabase(Database):
                 self.threads_or_processes_pool.remove(thread_or_process)
         else:
             return False
+
+
+# because each process has its own memory, this file will be imported
+# by x processes, so the file name of the database can't be the same
+# for all the processes, or they will interfere with each other in the
+# asserts because every action affects the file of the database and there
+# are x number of processes that will import this file simultaneously
+file_name = f"####test####{os.getpid()}"
+_ = SynchronizedDatabase(database_file_name=file_name)
+_["hello"] = 5  # check set_value & write & read
+assert _["hello"] == 5  # check get_value & read
+assert _.pop("hello") == 5  # check pop_value & write & read
+_.set_database({"hi": 6, "bye": 5})  # check set_database & write
+assert _.get_database() == {"hi": 6, "bye": 5}  # check get_database & read
+del _
+# check final result
+with open(file_name, "rb") as test_file:
+    _ = pickle.load(test_file)
+assert _ == {"hi": 6, "bye": 5}
+os.remove(file_name)
+del file_name, _

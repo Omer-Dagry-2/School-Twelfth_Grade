@@ -73,21 +73,22 @@ class Database(BaseDatabase):
         return self.__getitem__(key)
 
 
-if __name__ == '__main__':
-    _ = Database(database_file_name="####test####")
-    _["hello"] = 5  # check set_value & write & read
-    if _["hello"] != 5:  # check get_value & read
-        raise AssertionError
-    if _.pop("hello") != 5:  # check pop_value & write & read
-        raise AssertionError
-    _.set_database({"hi": 6, "bye": 5})  # check set_database & write
-    if _.get_database() != {"hi": 6, "bye": 5}:  # check get_database & read
-        raise AssertionError
-    del _
-    # check final result
-    with open("####test####", "rb") as test_file:
-        _ = pickle.load(test_file)
-    if _ != {"hi": 6, "bye": 5}:
-        raise AssertionError
-    del test_file, _
-    os.remove("####test####")
+# because each process has its own memory, this file will be imported
+# by x processes, so the file name of the database can't be the same
+# for all the processes, or they will interfere with each other in the
+# asserts because every action affects the file of the database and there
+# are x number of processes that will import this file simultaneously
+file_name = f"####test####{os.getpid()}"
+_ = Database(database_file_name=file_name)
+_["hello"] = 5  # check set_value & write & read
+assert _["hello"] == 5  # check get_value & read
+assert _.pop("hello") == 5  # check pop_value & write & read
+_.set_database({"hi": 6, "bye": 5})  # check set_database & write
+assert _.get_database() == {"hi": 6, "bye": 5}  # check get_database & read
+del _
+# check final result
+with open(file_name, "rb") as test_file:
+    _ = pickle.load(test_file)
+assert _ == {"hi": 6, "bye": 5}
+os.remove(file_name)
+del file_name, _
