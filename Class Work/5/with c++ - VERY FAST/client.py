@@ -106,6 +106,7 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
     global number_of_checked_options, local_server_stop
     client_socket, client_addr = local_server_sock.accept()
     while not local_server_stop:
+        time.sleep(0.1)
         res = None
         try:
             res = client_socket.recv(10000000).decode()
@@ -131,13 +132,11 @@ def local_server_count_number_of_options(local_server_sock: socket.socket,
             threading_lock.acquire()
             number_of_checked_options += how_many_1
             threading_lock.release()
-        if "2" in res:
-            try:
-                client_socket.shutdown(1)
-                client_socket.close()
-            except socket.error:
-                pass
-            break
+        how_many_2 = res.count("2")  # the c++ program send '1' for every 10000 iterations
+        if how_many_2 > 0:
+            threading_lock.acquire()
+            number_of_checked_options += how_many_2
+            threading_lock.release()
     local_server_sock.close()
 
 
@@ -179,6 +178,7 @@ def main():
     multiprocessing_queue = multiprocessing.Queue()
     # local server socket, to communicate with the processes
     threading_lock = threading.Lock()
+    local_server_stop = False
     local_server_sock = socket.socket()
     local_server_sock.bind((LOCAL_SERVER_IP, LOCAL_SERVER_PORT))
     local_server_sock.listen()
@@ -209,7 +209,7 @@ def main():
     # and this main thread finish sending to the server the count
     while decrypted_md5_hash is None or local_server_thread.is_alive() or number_of_checked_options != 0:
         if decrypted_md5_hash is None:
-            time.sleep(2)
+            time.sleep(1)
         # send the server the amount of options that were checked since the last time we sent
         if (datetime.datetime.now() - last_check_in).seconds >= 8:
             try:
@@ -254,6 +254,7 @@ def main():
                 if decrypted_md5_hash is not None and "not found" in decrypted_md5_hash:
                     print("Process Finished And Returned Not Found.")
                     decrypted_md5_hash = None
+                    break
                 elif "Unexpected Result From Crack MD5 Process" in decrypted_md5_hash:
                     print(decrypted_md5_hash)
                     sock.shutdown(1)
@@ -269,8 +270,8 @@ def main():
                     local_server_stop = True
                     break
             except queue.Empty:
-                pass
-        time.sleep(2)
+                break
+        time.sleep(0.5)
     # sent result to server if found
     # else tell server that the range doesn't contain the result and
     # close connection to server and start again (a new range will be given)
@@ -287,6 +288,7 @@ def main():
             print("Couldn't Send Result To Server. Connection Error")
         exit()
     elif process_finished:
+        local_server_stop = True
         print("Didn't Found Result In Range.")
         try:
             msg = "not found.".rjust(32, " ").encode()

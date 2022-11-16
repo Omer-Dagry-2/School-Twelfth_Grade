@@ -28,12 +28,13 @@ void crack_md5(string md5_hash_lower, long long int start_range,
         try all options from start_range to end_range
     */
     char msg[] = "1";
+    char msg2[] = "2";
     string option_string;
     long long int option_num = start_range;
     int count = 0;
     for (option_num; option_num < end_range; option_num++) {
         if (count == 10000) {
-            try {while (sock.send_(msg, 1) != 1);}
+            try {while (sock.send_(msg, 1) != 1);}  // send '1' (indicates 10000 iteration)
             catch (...) {}
             count = 0;
         }
@@ -48,6 +49,11 @@ void crack_md5(string md5_hash_lower, long long int start_range,
             break;  // md5_hash found stop work
         }
         else if (md5_data != "") break;
+    }
+    // send the rest (if count != 10000 at the last run)
+    for (int i = 0; i < count; i++) {
+        try {while (sock.send_(msg2, 1) != 1);}  // send '2' (indicates 1 iteration)
+        catch (...) {}
     }
     threads_finished[thread_pos] = 1;  // change val to 1 (thread finished)
 }
@@ -116,7 +122,7 @@ int main(int argc, char** argv) {
         for (int core = 0; core < CORE_COUNT; core++) {
             if (threads_finished[core] == 0) {stop = false; break;}
         }
-        sleep(2000);
+        sleep(1500);
     }
     // check result and print out
     if (md5_data != "") cout << "Hashed Data: " << md5_data << endl;
