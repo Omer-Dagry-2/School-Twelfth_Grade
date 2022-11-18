@@ -1,5 +1,5 @@
 to compile (on windows) use:
-g++ .\crack_md5.cpp .\Socket.cpp .\md5.cpp -o crack_md5.exe -lwsock32 -lWs2_32
+g++ .\crack_md5.cpp .\Socket.cpp .\md5.cpp -o .\crack_md5.exe -lwsock32 -lWs2_32
 
 
 !!!!!!

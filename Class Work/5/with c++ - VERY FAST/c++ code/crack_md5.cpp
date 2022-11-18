@@ -32,7 +32,7 @@ void crack_md5(string md5_hash_lower, long long int start_range,
     string option_string;
     long long int option_num = start_range;
     int count = 0;
-    for (option_num; option_num < end_range; option_num++) {
+    for (option_num; option_num <= end_range; option_num++) {
         if (count == 10000) {
             try {while (sock.send_(msg, 1) != 1);}  // send '1' (indicates 10000 iteration)
             catch (...) {}
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
                                             md5_data_length, core - 1, sock);
             cout << start_range << " - ";
             start_range += total / CORE_COUNT;
-            cout << start_range << endl;
+            cout << start_range - 1 << endl;
         }
         threads_list[core - 1].detach();
     }
