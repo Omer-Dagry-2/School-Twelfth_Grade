@@ -115,22 +115,6 @@ def brute_force_decrypt_md5(md5_hash: str, base_string_length: int,
                     return "stop, " + current_string + number
         if base_string_length != 10:
             return None
-        # ------------------------------- Not Recursive ---------------------------------
-        # I run a test and the recursive found the result faster (about 8% faster)
-        #
-        # found = False
-        # md5_hash = md5_hash.lower()
-        # for option in range(int(start_from), int(end_at) + 1):
-        #     option = str(option).zfill(base_string_length)
-        #     while local_client_socket.send("1".encode()) != 1:
-        #         pass
-        #     if hashlib.md5(option.encode()).hexdigest().lower() == md5_hash:
-        #         multiprocessing_queue.put(option)
-        #         found = True
-        #         break
-        # if not found:
-        #     multiprocessing_queue.put("not found, stopped at '%s'")
-        # -------------------------------------------------------------------------------
     except KeyboardInterrupt:
         pass
 
