@@ -16,3 +16,9 @@ in Ver 2 when running the client the cpu usage is around 5% to 20% with a maximu
 the processes except 1 are always waiting for that 1 process to release the lock and once he releases
 the lock another process acquires it and all the others are waiting, this slows the program,
 so I created a new version - Ver 1.
+--------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------
+
+                                                UPDATE
+another version of this project, where the function that checks all the MD5 options on the client side is made in c++.
+--------------------------------------------------------------------------------------------------------
