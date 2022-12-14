@@ -8,13 +8,14 @@ from database import Database
 
 
 class FileDatabase(Database):
-    def __init__(self, database_file_name: str):
+    def __init__(self, database_file_name: str, ignore_existing: bool = False, clear_database: bool = False):
         super().__init__()
-        if os.path.isfile(database_file_name):
+        if os.path.isfile(database_file_name) and not ignore_existing:
             raise ValueError(f"The File '{database_file_name}' Already Exists.")
         self.__database_file_name = database_file_name
-        with open(self.__database_file_name, "wb") as database_file:
-            database_file.write(b"")
+        with open(self.__database_file_name, "wb") as db:  # create the database file
+            if clear_database:  # clear database if clear_database
+                db.write(b"")
 
     def write_database(self, read_after: bool = True):
         """ Write `self.__database` to a file using pickle """
