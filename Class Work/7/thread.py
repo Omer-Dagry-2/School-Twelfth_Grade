@@ -76,3 +76,12 @@ class Thread:
     def get_name(self):
         """ returns: the thread name"""
         return self.__name
+
+    def __del__(self):
+        pass  # there is nothing to clean up
+
+    def __enter__(self):  # allows: "with Thread(...) as p:"
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Thread(...) as p:"
+        self.__del__()

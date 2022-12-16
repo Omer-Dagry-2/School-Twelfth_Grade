@@ -32,34 +32,47 @@ class Process:
         target_file_path = target.__code__.co_filename
         target_name = "'" + target.__qualname__ + "'"
         dir_name = os.path.dirname(__file__)
-        file_name = "process_temp_file.py"
-        while os.path.isfile(f'{dir_name}\\{file_name}'):
-            file_name = ".".join(file_name.split(".")[:-1]) + "_." + file_name.split(".")[-1]
-        shutil.copy2(src=target_file_path, dst=f'{dir_name}\\{file_name}')
-        self.__file_name = file_name
-        file_name = "'" + file_name.split(".")[0] + "'"
-        if self.__args != () or self.__kwargs != {}:
-            pickle_file_name = f"pickle_process_args_kwargs{random.randrange(-100000, len(args))}_" \
-                               f"{str(datetime.datetime.now().strftime('%Y_%m_%d %H.%M.%S.%f'))}"
-            while os.path.isfile(pickle_file_name):
-                time.sleep(0.001)
+        self.__dirname = dir_name
+        os.makedirs(dir_name, exist_ok=True)
+        #
+        # grab the process creation mutex to make sure
+        # there really is no file with the name of file_name value
+        # and no file with the name of pickle_file_name value
+        mutex = win32event.CreateMutex(None, False, "##_______CreateProcessMutex_______##")
+        win32event.WaitForSingleObject(mutex, win32event.INFINITE)
+        # use try & finally to make sure the mutex is released
+        try:
+            file_name = "process_temp_file.py"
+            while os.path.isfile(f'{dir_name}\\{file_name}'):
+                file_name = ".".join(file_name.split(".")[:-1]) + "_." + file_name.split(".")[-1]
+            shutil.copy2(src=target_file_path, dst=f'{dir_name}\\{file_name}')
+            self.__file_name = file_name
+            file_name = "'" + file_name.split(".")[0] + "'"
+            if self.__args != () or self.__kwargs != {}:
                 pickle_file_name = f"pickle_process_args_kwargs{random.randrange(-100000, len(args))}_" \
                                    f"{str(datetime.datetime.now().strftime('%Y_%m_%d %H.%M.%S.%f'))}"
-            try:
-                with open(pickle_file_name, "wb") as f:
-                    f.write(pickle.dumps((args, kwargs)))
-            except (pickle.PickleError, pickle.PicklingError) as pickle_error:
-                os.remove(pickle_file_name)
-                raise pickle_error
-            pickle_file_name = "'" + pickle_file_name + "'"
-            #
-            self.__command_line = \
-                f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
-                f'{pickle_file_name}, {file_name}, {target_name})"'
-        else:
-            self.__command_line = \
-                f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
-                f'None, {file_name}, {target_name})"'
+                while os.path.isfile(f"{dir_name}\\{pickle_file_name}"):
+                    time.sleep(0.001)
+                    pickle_file_name = f"pickle_process_args_kwargs{random.randrange(-100000, len(args))}_" \
+                                       f"{str(datetime.datetime.now().strftime('%Y_%m_%d %H.%M.%S.%f'))}"
+                self.__pickle_file_name = pickle_file_name
+                try:
+                    with open(f"{dir_name}\\{pickle_file_name}", "wb") as f:
+                        f.write(pickle.dumps((args, kwargs)))
+                except (pickle.PickleError, pickle.PicklingError) as pickle_error:
+                    os.remove(f"{dir_name}\\{pickle_file_name}")
+                    raise pickle_error
+                pickle_file_name = "'" + pickle_file_name + "'"
+                #
+                self.__command_line = \
+                    f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
+                    f'{pickle_file_name}, {file_name}, {target_name})"'
+            else:
+                self.__command_line = \
+                    f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
+                    f'None, {file_name}, {target_name})"'
+        finally:
+            win32event.ReleaseMutex(mutex)
         self.__process_security_attributes = process_security_attributes
         self.__thread_security_attributes = thread_security_attributes
         self.__inherit_handles = inherit_handles
@@ -82,6 +95,7 @@ class Process:
     @staticmethod
     def run(pickled_data_file_name: str, file_name: str, target_name: str):
         """ This func unpickles the args & kwargs and then calls the target func """
+        # use try & finally to make sure the files are deleted at the end
         try:
             module = importlib.import_module(file_name)
             if "." in target_name:
@@ -91,30 +105,15 @@ class Process:
                     module = target
             else:
                 target = getattr(module, target_name)
-        except AttributeError as error:
-            os.remove(file_name + ".py")
             if pickled_data_file_name is not None:
-                os.remove(pickled_data_file_name)
-            raise error
-        except BaseException as err:
-            os.remove(file_name + ".py")
-            if pickled_data_file_name is not None:
-                os.remove(pickled_data_file_name)
-            raise err
-        os.remove(file_name + ".py")
-        if pickled_data_file_name is not None:
-            try:
                 with open(pickled_data_file_name, "rb") as f:
                     pickle_data = pickle.load(f)
-            except (pickle.PickleError, pickle.PicklingError, pickle.UnpicklingError) as pickle_error:
+                args = pickle_data[0]
+                kwargs = pickle_data[1]
+        finally:
+            if pickled_data_file_name is not None:
                 os.remove(pickled_data_file_name)
-                raise pickle_error
-            except BaseException as error:
-                os.remove(pickled_data_file_name)
-                raise error
-            os.remove(pickled_data_file_name)
-            args = pickle_data[0]
-            kwargs = pickle_data[1]
+            os.remove(file_name + ".py")
         if pickled_data_file_name is not None:
             target(*args, **kwargs)
         else:
@@ -124,11 +123,23 @@ class Process:
         """ Start The Process Main Thread"""
         if self.__started:
             raise RuntimeError("process can only be started once")
-        suspend_count = self.resume_main_thread()
-        # wait for the main thread to import the target
-        # function and only then returns from this function call
-        while self.__file_name in os.listdir():
-            time.sleep(0.1)
+        # create mutex to make sure only 1 process is being started simultaneously
+        mutex = win32event.CreateMutex(None, False, "##_______StartProcessMutex_______##")
+        win32event.WaitForSingleObject(mutex, win32event.INFINITE)
+        # use try & finally to make sure the mutex is released
+        try:
+            suspend_count = self.resume_main_thread()
+            # wait until the main thread deletes the files (which means he finished the starting process)
+            try:
+                while self.__file_name in os.listdir(self.__dirname):
+                    time.sleep(0.1)
+            except FileNotFoundError:
+                # if this process is the only one that has
+                # been created it will remove the tmp folder as well,
+                # and we will get this exception here.
+                pass
+        finally:
+            win32event.ReleaseMutex(mutex)
         self.__started = True
         return suspend_count
 
@@ -208,3 +219,18 @@ class Process:
     def get_name(self):
         """ returns: the process name """
         return self.__name
+
+    def __del__(self):
+        # if the process was created but never started
+        # delete his files when the object is deleted
+        if not self.__started:
+            if os.path.isfile(f"{self.__dirname}\\{self.__file_name}"):
+                os.remove(f"{self.__dirname}\\{self.__file_name}")
+            if os.path.isfile(f"{self.__dirname}\\{self.__pickle_file_name}"):
+                os.remove(f"{self.__dirname}\\{self.__pickle_file_name}")
+
+    def __enter__(self):  # allows: "with Process(...) as p:"
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Process(...) as p:"
+        self.__del__()
