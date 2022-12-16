@@ -71,6 +71,7 @@ class Process:
                 self.__command_line = \
                     f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
                     f'None, {file_name}, {target_name})"'
+                self.__pickle_file_name = None
         finally:
             win32event.ReleaseMutex(mutex)
         self.__process_security_attributes = process_security_attributes
@@ -228,8 +229,16 @@ class Process:
         if not self.__started:
             if os.path.isfile(f"{self.__dirname}\\{self.__file_name}"):
                 os.remove(f"{self.__dirname}\\{self.__file_name}")
-            if os.path.isfile(f"{self.__dirname}\\{self.__pickle_file_name}"):
+            if self.__pickle_file_name is not None and \
+                    os.path.isfile(f"{self.__dirname}\\{self.__pickle_file_name}"):
                 os.remove(f"{self.__dirname}\\{self.__pickle_file_name}")
+        # free the resources
+        try:
+            win32process.TerminateProcess(self.__process, -1)
+            win32api.CloseHandle(self.__process)
+        except:
+            pass
+        del self
 
     def __enter__(self):  # allows: "with Process(...) as p:"
         return self

@@ -1,4 +1,6 @@
 import time
+
+import win32api
 import win32event
 import win32process
 
@@ -79,12 +81,17 @@ class Thread:
         return self.__name
 
     def __del__(self):
-        pass  # there is nothing to clean up
+        # free the resources
+        try:
+            win32api.CloseHandle(self.__thread)
+        except:
+            pass
+        del self
 
-    def __enter__(self):  # allows: "with Thread(...) as p:"
+    def __enter__(self):  # allows: "with Thread(...) as t:"
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Thread(...) as p:"
+    def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Thread(...) as t:"
         if self.__started:
             # wait for thread to finish, only then exit
             while self.is_alive():
