@@ -1,3 +1,4 @@
+import time
 import win32event
 import win32process
 
@@ -84,4 +85,8 @@ class Thread:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Thread(...) as p:"
+        if self.__started:
+            # wait for thread to finish, only then exit
+            while self.is_alive():
+                time.sleep(0.1)
         self.__del__()

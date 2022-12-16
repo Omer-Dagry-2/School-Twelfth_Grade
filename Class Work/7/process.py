@@ -42,7 +42,7 @@ class Process:
         win32event.WaitForSingleObject(mutex, win32event.INFINITE)
         # use try & finally to make sure the mutex is released
         try:
-            file_name = "process_temp_file.py"
+            file_name: str = "process_temp_file.py"
             while os.path.isfile(f'{dir_name}\\{file_name}'):
                 file_name = ".".join(file_name.split(".")[:-1]) + "_." + file_name.split(".")[-1]
             shutil.copy2(src=target_file_path, dst=f'{dir_name}\\{file_name}')
@@ -170,7 +170,9 @@ class Process:
     def terminate(self):
         """ Terminates The Process ( same as .kill() )"""
         if self.__started and self.__process is not None:
-            win32process.TerminateProcess(self.__process, -1)
+            if self.is_alive():
+                self.__killed = True
+                win32process.TerminateProcess(self.__process, -1)
             return
         raise RuntimeError("Can't terminate a process that hasn't started yet.")
 
@@ -233,4 +235,8 @@ class Process:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):  # allows: "with Process(...) as p:"
+        if self.__started:
+            # wait for process to finish, only then exit
+            while self.is_alive():
+                time.sleep(0.1)
         self.__del__()
