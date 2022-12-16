@@ -4,8 +4,12 @@ import os
 import time
 import random
 import datetime
-import threading
-import multiprocessing
+import win32process
+
+from typing import *
+# my implementation of Threads and Processes using Windows api
+from thread import Thread
+from process import Process
 
 if "sync_database.py" and "file_database.py" not in os.listdir():
     missing = [file for file in ["sync_database.py", "file_database.py"] if file not in os.listdir()]
@@ -22,7 +26,7 @@ class CheckDatabase:
         self.__database: FileDatabase | None = None
         self.__can_start = False
         self.__started = False
-        self.__threads_or_processes_pool: list[list[multiprocessing.Process | threading.Thread], ...] = []
+        self.__threads_or_processes_pool: list[list[Process | Thread], ...] = []
         self.__animation_thread = None
 
     @staticmethod
@@ -40,7 +44,7 @@ class CheckDatabase:
             raise Exception("Animation Already Started")
         global stop_animation
         stop_animation = False
-        self.__animation_thread = threading.Thread(target=self.animation, args=(word,), daemon=True)
+        self.__animation_thread = Thread(target=self.animation, args=(word,))
         self.__animation_thread.start()
 
     def stop_animation(self):
@@ -79,15 +83,12 @@ class CheckDatabase:
         sync_database = SyncDatabase(database, mode, max_reads_together)
         sync_database["if we are not"] = "here at the end, the test failed"
         sync_database["remember to check"] = "if we are here"
-        process_thread = multiprocessing.Process if mode else threading.Thread
+        process_thread = Process if mode else Thread
         name = "Process" if mode else "Thread"
         for i in range(number_of_threads_or_processes):
-            writer = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "set", sync_database,),
-                                    daemon=True)
-            reader = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "get", sync_database,),
-                                    daemon=True)
-            deleter = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "pop", sync_database,),
-                                     daemon=True)
+            writer = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "set", sync_database))
+            reader = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "get", sync_database))
+            deleter = process_thread(target=self.work, args=(f"{name}-{i}", range_end, "pop", sync_database))
             self.__threads_or_processes_pool[0].append(writer)
             self.__threads_or_processes_pool[1].append(reader)
             self.__threads_or_processes_pool[2].append(deleter)
@@ -137,7 +138,7 @@ class CheckDatabase:
         else:
             raise Exception("Please call `create_database_and_workers()` before calling `start_work()`")
 
-    def still_working(self, pool: list[multiprocessing.Process | threading.Thread]) -> bool:
+    def still_working(self, pool: list[Process | Thread]) -> bool:
         """ if there are still threads/processes alive -> True, else -> False"""
         for p_t in pool:
             if p_t.is_alive():
@@ -160,7 +161,7 @@ class CheckDatabase:
         self.stop_animation()
         # check the result
         if self.__database.get_database() == \
-            {"if we are not": "here at the end, the test failed", "remember to check": "if we are here"}:
+                {"if we are not": "here at the end, the test failed", "remember to check": "if we are here"}:
             return True
         return False
 
@@ -181,8 +182,8 @@ class CheckDatabase:
         print(f" {'PASSED' if result else 'FAILED'} ".center(64, "-"))
 
     def check_multiprocessing_and_threading(self, threading_range: int = 300, multiprocessing_range: int = 300,
-                                            number_of_processes: int = multiprocessing.cpu_count() * 2,
-                                            number_of_threads: int = multiprocessing.cpu_count() * 10,
+                                            number_of_processes: int = os.cpu_count() * 2,
+                                            number_of_threads: int = os.cpu_count() * 10,
                                             max_reads_together: int = 10):
         # check threading
         self._check_threading(threading_range, number_of_threads, max_reads_together)
