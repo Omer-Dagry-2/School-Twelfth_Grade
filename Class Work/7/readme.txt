@@ -7,5 +7,5 @@ the args and kwargs and to think of a way to even call the function,
 because unlike the 'beginthreadex' the 'CreateProcess' doesn't take a
 function as a parameter, it takes a command that runs in cmd (or another app if you want)
 so I had to somehow call the desired function and I wanted to do it dynamically, not
-just specific to this project, so it tool sum thinking and researching
+just specific to this project, so it took sum thinking
 

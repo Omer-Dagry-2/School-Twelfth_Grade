@@ -1,16 +1,15 @@
 import os
 import sys
 import time
-import shutil
+import types
 import pickle
-import random
-import datetime
+import marshal
 import win32api
-import importlib
 import win32event
 import win32process
 
 from typing import *
+from base64 import b64encode, b64decode
 
 
 class Process:
@@ -18,6 +17,13 @@ class Process:
                  name: Union[str, None] = None, process_security_attributes=None, thread_security_attributes=None,
                  inherit_handles: int = 0, flags: Union[int, None] = None, environment: Union[Dict, None] = None,
                  current_directory: Union[str, None] = None):
+        """
+        Create A New Process
+        :param target: The target function to call.
+        :param args: The arguments to pass to the target function.
+        :param kwargs: The keyword arguments to pass to the target function.
+        :param name: The name of the process.
+        """
         kwargs = {} if kwargs is None else kwargs
         args = () if args is None else args
         assert isinstance(kwargs, dict)
@@ -26,54 +32,27 @@ class Process:
         self.__args = args
         self.__kwargs = kwargs
         self.__name = name
-        python = sys.executable
         script_name = ".".join(__file__.split('\\')[-1].split('.')[:-1])
         #
-        target_file_path = target.__code__.co_filename
-        target_name = "'" + target.__qualname__ + "'"
-        dir_name = os.path.dirname(__file__)
-        self.__dirname = dir_name
-        os.makedirs(dir_name, exist_ok=True)
-        #
-        # grab the process creation mutex to make sure
-        # there really is no file with the name of file_name value
-        # and no file with the name of pickle_file_name value
-        mutex = win32event.CreateMutex(None, False, "##_______CreateProcessMutex_______##")
-        win32event.WaitForSingleObject(mutex, win32event.INFINITE)
-        # use try & finally to make sure the mutex is released
-        try:
-            file_name: str = "process_temp_file.py"
-            while os.path.isfile(f'{dir_name}\\{file_name}'):
-                file_name = ".".join(file_name.split(".")[:-1]) + "_." + file_name.split(".")[-1]
-            shutil.copy2(src=target_file_path, dst=f'{dir_name}\\{file_name}')
-            self.__file_name = file_name
-            file_name = "'" + file_name.split(".")[0] + "'"
-            if self.__args != () or self.__kwargs != {}:
-                pickle_file_name = f"pickle_process_args_kwargs{random.randrange(-100000, len(args))}_" \
-                                   f"{str(datetime.datetime.now().strftime('%Y_%m_%d %H.%M.%S.%f'))}"
-                while os.path.isfile(f"{dir_name}\\{pickle_file_name}"):
-                    time.sleep(0.001)
-                    pickle_file_name = f"pickle_process_args_kwargs{random.randrange(-100000, len(args))}_" \
-                                       f"{str(datetime.datetime.now().strftime('%Y_%m_%d %H.%M.%S.%f'))}"
-                self.__pickle_file_name = pickle_file_name
-                try:
-                    with open(f"{dir_name}\\{pickle_file_name}", "wb") as f:
-                        f.write(pickle.dumps((args, kwargs)))
-                except (pickle.PickleError, pickle.PicklingError) as pickle_error:
-                    os.remove(f"{dir_name}\\{pickle_file_name}")
-                    raise pickle_error
-                pickle_file_name = "'" + pickle_file_name + "'"
-                #
-                self.__command_line = \
-                    f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
-                    f'{pickle_file_name}, {file_name}, {target_name})"'
-            else:
-                self.__command_line = \
-                    f'"{python}" -c "import {script_name}; {script_name}.Process.run(' \
-                    f'None, {file_name}, {target_name})"'
-                self.__pickle_file_name = None
-        finally:
-            win32event.ReleaseMutex(mutex)
+        # if the target function is a builtin function it has no attribute '__code__' because the
+        # implementation is in c, but it can be pickled, so builtin function are getting pickled
+        # and other functions that are not builtin have '__code__' attribute and the code needs to be "marshalled"
+        if isinstance(self.__target, types.BuiltinFunctionType):
+            func = b64encode(pickle.dumps(self.__target)).decode()
+            func_serialized_by = "pickle"
+        else:
+            try:
+                func = b64encode(marshal.dumps(self.__target.__code__)).decode()
+            except:
+                raise RuntimeError("The target function can't be serialized.")
+            func_serialized_by = "marshal"
+        # pickle the args and kwargs
+        pickled_data = (self.__args, self.__kwargs) if self.__args != () or self.__kwargs != {} else None
+        pickled_data = b64encode(pickle.dumps(pickled_data)).decode()
+        # create the command that the main thread of the process will run
+        self.__command_line = f'"{sys.executable}" -c "import {script_name}; {script_name}.Process.run('
+        self.__command_line += f"'{pickled_data}', '{func}', '{func_serialized_by}')" + '"'
+        # parameters to start process using Windows api
         self.__process_security_attributes = process_security_attributes
         self.__thread_security_attributes = thread_security_attributes
         self.__inherit_handles = inherit_handles
@@ -85,62 +64,41 @@ class Process:
         self.__startup_info.hStdInput = win32api.GetStdHandle(win32api.STD_INPUT_HANDLE)
         self.__startup_info.hStdOutput = win32api.GetStdHandle(win32api.STD_OUTPUT_HANDLE)
         self.__startup_info.hStdError = win32api.GetStdHandle(win32api.STD_ERROR_HANDLE)
+        # class parameters
         self.__started = False
         self.__suspended = True
         self.__killed = False
+        # create the process
         self.__process, self.__main_thread, self.__process_id, self.__main_thread_id = win32process.CreateProcess(
             self.__name, self.__command_line, self.__process_security_attributes, self.__thread_security_attributes,
             self.__inherit_handles, self.__flags, self.__environment, self.__current_directory, self.__startup_info
         )
 
     @staticmethod
-    def run(pickled_data_file_name: str, file_name: str, target_name: str):
+    def run(pickled_data: str, func: str, func_serialized_by: str):
         """ This func unpickles the args & kwargs and then calls the target func """
-        # use try & finally to make sure the files are deleted at the end
-        try:
-            module = importlib.import_module(file_name)
-            if "." in target_name:
-                target_name_list = target_name.split(".")
-                for target_name in target_name_list:
-                    target = getattr(module, target_name)
-                    module = target
-            else:
-                target = getattr(module, target_name)
-            if pickled_data_file_name is not None:
-                with open(pickled_data_file_name, "rb") as f:
-                    pickle_data = pickle.load(f)
-                args = pickle_data[0]
-                kwargs = pickle_data[1]
-        finally:
-            if pickled_data_file_name is not None:
-                os.remove(pickled_data_file_name)
-            os.remove(file_name + ".py")
-        if pickled_data_file_name is not None:
-            target(*args, **kwargs)
+        # if the function was serialized by pickle - un-pickle the function
+        # if it was serialized by marshal - un-marshal the function and reconstruct it
+        if func_serialized_by == "marshal":
+            code = marshal.loads(b64decode(func.encode()))
+            func = types.FunctionType(code, {})
+        elif func_serialized_by == "pickle":
+            func = pickle.loads(b64decode(func.encode()))
         else:
-            target()
+            raise ValueError(f"Unknown value for 'func_serialized_by': '{func_serialized_by}'")
+        pickled_data = pickle.loads(b64decode(pickled_data.encode()))
+        if pickled_data is not None:
+            args = pickled_data[0]
+            kwargs = pickled_data[1]
+            func(*args, **kwargs)
+        else:
+            func()
 
     def start(self):
         """ Start The Process Main Thread"""
         if self.__started:
             raise RuntimeError("process can only be started once")
-        # create mutex to make sure only 1 process is being started simultaneously
-        mutex = win32event.CreateMutex(None, False, "##_______StartProcessMutex_______##")
-        win32event.WaitForSingleObject(mutex, win32event.INFINITE)
-        # use try & finally to make sure the mutex is released
-        try:
-            suspend_count = self.resume_main_thread()
-            # wait until the main thread deletes the files (which means he finished the starting process)
-            try:
-                while self.__file_name in os.listdir(self.__dirname):
-                    time.sleep(0.1)
-            except FileNotFoundError:
-                # if this process is the only one that has
-                # been created it will remove the tmp folder as well,
-                # and we will get this exception here.
-                pass
-        finally:
-            win32event.ReleaseMutex(mutex)
+        suspend_count = self.resume_main_thread()
         self.__started = True
         return suspend_count
 
@@ -224,14 +182,6 @@ class Process:
         return self.__name
 
     def __del__(self):
-        # if the process was created but never started
-        # delete his files when the object is deleted
-        if not self.__started:
-            if os.path.isfile(f"{self.__dirname}\\{self.__file_name}"):
-                os.remove(f"{self.__dirname}\\{self.__file_name}")
-            if self.__pickle_file_name is not None and \
-                    os.path.isfile(f"{self.__dirname}\\{self.__pickle_file_name}"):
-                os.remove(f"{self.__dirname}\\{self.__pickle_file_name}")
         # free the resources
         try:
             win32process.TerminateProcess(self.__process, -1)
