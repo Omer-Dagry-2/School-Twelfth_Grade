@@ -13,7 +13,7 @@ class FileDatabase(Database):
         if os.path.isfile(database_file_name) and not ignore_existing:
             raise ValueError(f"The File '{database_file_name}' Already Exists.")
         self.__database_file_name = database_file_name
-        with open(self.__database_file_name, "wb") as db:  # create the database file
+        with open(self.__database_file_name, "wb" if clear_database else "ab") as db:  # create the database file
             if clear_database:  # clear database if clear_database
                 db.write(b"")
 
